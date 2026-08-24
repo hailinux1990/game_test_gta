@@ -7,12 +7,15 @@ index.html — giao diện: HUD máu, sao truy nã, bảng chọn vũ khí, đ�
 js/game.js — toàn bộ logic game (~1300 dòng, thuần Three.js)
 lib/three.min.js — engine Three.js r128 (bản local)
 Các tính năng theo đúng yêu cầu
+
 Yêu cầu	Đã làm
 Thế giới 3D pixel	Thành phố 5×5 block: đường nhựa, vạch kẻ, vỉa hè, tòa nhà (mặt tiền cửa sổ pixel), cây cối. Render ở độ phân giải thấp + upscale pixelated để có chất "pixel 3D"
 Xe cộ di chuyển	15 xe (dân + xe cảnh sát có đèn nháy) tự lái theo tuyến đường, đi đúng làn, rẽ ở ngã tư. Nhân vật chính lên/xuống và lái xe (phím E)
 Người chuyển động	~34 người dân đi lại, ~9 cảnh sát tuần tra dọc đường (dùng BFS tìm đường trên lưới đường, không xuyên tòa nhà)
 Đánh NPC dân + cảnh sát, chảy máu	Hệ máu hạt + vệt máu loang trên nền, NPC chết ngã xuống rồi biến mất
 Vũ khí: tay / dao / súng	1 đấm tay (12 dmg), 2 dao (34 dmg), 3 súng (bắn tia, headshot 60 dmg, 30 viên + R nạp đạn)
+
+
 Điều khiển
 WASD / mũi tên di chuyển · SHIFT chạy · Chuột ngắm · Click trái tấn công/bắn
 1·2·3 đổi vũ khí · R nạp đạn · E lên/xuống xe
