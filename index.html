@@ -33,7 +33,15 @@
   .wslot.active { box-shadow:0 0 0 2px var(--ui); color:var(--ui); background:rgba(0,0,0,.7); }
   .wslot .key { color:#888; margin-right:5px; }
   #ammoBox { bottom:16px; right:14px; text-align:right; font-size:14px; letter-spacing:1px; }
-  #ammoBox .n { color:var(--ui); font-size:22px; }
+  #ammoBox .n { color:var(--ui); font-size:22px; display:inline-block; }
+  #ammoBox .sub { font-size:11px; color:#bbb; margin-top:2px; letter-spacing:2px; }
+  #ammoBox .sub span { color:#ffd76a; }
+  #ammoN.pulse { animation:ammoPulse .22s ease-out; }
+  @keyframes ammoPulse { 0% { transform:scale(1.7); color:#fff; } 100% { transform:scale(1); } }
+  .floater { position:fixed; z-index:11; pointer-events:none; font-size:14px; font-weight:bold;
+             color:#7df; text-shadow:2px 2px 0 #000; transform:translate(-50%,-50%);
+             animation:floatUp .7s ease-out forwards; }
+  @keyframes floatUp { from { opacity:1; } to { opacity:0; margin-top:-30px; } }
   #msg { bottom:66px; left:50%; transform:translateX(-50%); text-align:center; font-size:13px; letter-spacing:1px; color:#ff0; opacity:0; transition:opacity .3s; white-space:nowrap; }
   #hint { top:14px; right:14px; text-align:right; font-size:11px; line-height:1.7; color:#ddd; }
   #hint b { color:var(--ui); }
@@ -43,6 +51,8 @@
   #crosshair::before { left:50%; top:0; width:2px; height:100%; margin-left:-1px; }
   #crosshair::after { top:50%; left:0; height:2px; width:100%; margin-top:-1px; }
   #crosshair .dot { position:absolute; left:50%; top:50%; width:4px; height:4px; margin:-2px; background:#f44; border-radius:50%; }
+  #crosshair.hit::before, #crosshair.hit::after { background:#ff4444; }
+  #crosshair.hit .dot { background:#ff2222; width:7px; height:7px; margin:-3.5px 0 0 -3.5px; }
   /* ---- Minimap ---- */
   #minimapBox { top:14px; right:14px; border:2px solid #000; box-shadow:0 0 0 2px rgba(255,255,255,.4); background:#000; }
   #minimap { display:block; image-rendering: pixelated; }
@@ -80,13 +90,16 @@
     <span class="wslot" data-w="2"><span class="key">3</span>SÚNG</span>
   </div>
 
-  <div id="ammoBox" class="hud">ĐẠN: <span class="n" id="ammoN">∞</span></div>
+  <div id="ammoBox" class="hud">
+    <div>ĐẠN: <span class="n" id="ammoN">—</span></div>
+    <div class="sub">ĐÃ BẮN: <span id="shotsN">0</span></div>
+  </div>
   <div id="msg" class="hud"></div>
 
   <div id="hint" class="hud">
     <b>WASD</b> di chuyển &nbsp; <b>SHIFT</b> chạy<br>
     <b>CHUỘT</b> ngắm &nbsp; <b>CLICK</b> tấn công<br>
-    <b>E</b> lên/xuống xe &nbsp; <b>1·2·3</b> đổi vũ khí &nbsp; <b>R</b> nạp đạn
+    <b>E</b> lên/xuống xe &nbsp; <b>1·2·3</b> đổi vũ khí &nbsp; <b>R</b> nạp 100 viên
   </div>
 
   <div id="minimapBox" class="hud">
@@ -101,8 +114,9 @@
     <div class="controls">
       <b>WASD / Mũi tên</b> — di chuyển &nbsp;&nbsp; <b>SHIFT</b> — chạy<br>
       <b>Chuột</b> — ngắm &nbsp;&nbsp; <b>Click trái</b> — đánh / bắn<br>
-      <b>1 / 2 / 3</b> — tay · dao · súng &nbsp;&nbsp; <b>E</b> — lên xuống xe &nbsp;&nbsp; <b>R</b> — nạp đạn<br><br>
-      Đánh dân thường hay cảnh sát để gây chiến và bị truy nã!
+      <b>1 / 2 / 3</b> — tay · dao · súng &nbsp;&nbsp; <b>E</b> — lên xuống xe &nbsp;&nbsp; <b>R</b> — nạp 100 viên<br><br>
+      Đánh dân thường hay cảnh sát để gây chiến và bị truy nã!<br>
+      <span style="color:#888">🎧 Bật loa — có tiếng phố, xe cộ, chim hót và tiếng súng vang.</span>
     </div>
     <button class="btn" id="startBtn">▶ BẮT ĐẦU</button>
   </div>

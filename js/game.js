@@ -7,6 +7,7 @@
 
   /* ---------------- Config ---------------- */
   const PIXEL_SCALE = 2;          // render at 1/N resolution, upscale -> pixel look
+  const MAG_SIZE = 100;           // rounds per full magazine (R to reload)
   const CELL = 35;                // block + road pitch
   const ROAD = 9;                 // road width
   const BLOCK = CELL - ROAD;      // buildable block width (26)
@@ -46,6 +47,13 @@
         this.master = this.ctx.createGain();
         this.master.gain.value = 0.35;
         this.master.connect(this.ctx.destination);
+        // outdoor echo bus (urban canyon reverb for gunshots)
+        this.echo = this.ctx.createDelay(0.6);
+        this.echo.delayTime.value = 0.17;
+        const fb = this.ctx.createGain(); fb.gain.value = 0.3;
+        const wet = this.ctx.createGain(); wet.gain.value = 0.16;
+        this.echo.connect(fb); fb.connect(this.echo);
+        this.echo.connect(wet); wet.connect(this.master);
       } catch (e) { this.ctx = null; }
     },
     tone(freq, dur, type, vol, slideTo) {
@@ -60,7 +68,7 @@
       o.connect(g); g.connect(this.master);
       o.start(t); o.stop(t + dur + 0.02);
     },
-    noise(dur, vol, freq) {
+    noise(dur, vol, freq, echo) {
       if (!this.ctx) return;
       const t = this.ctx.currentTime;
       const len = Math.floor(this.ctx.sampleRate * dur);
@@ -71,9 +79,10 @@
       const f = this.ctx.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = freq || 2000;
       const g = this.ctx.createGain(); g.gain.value = vol || 0.3;
       src.connect(f); f.connect(g); g.connect(this.master);
+      if (echo && this.echo) g.connect(this.echo);
       src.start(t);
     },
-    shoot() { this.noise(0.12, 0.5, 2600); this.tone(140, 0.09, 'square', 0.25, 50); },
+    shoot() { this.noise(0.12, 0.5, 2600, true); this.tone(140, 0.09, 'square', 0.25, 50); },
     punch() { this.tone(200, 0.07, 'square', 0.22, 90); this.noise(0.05, 0.15, 700); },
     knife() { this.noise(0.08, 0.2, 5200); this.tone(900, 0.06, 'sawtooth', 0.1, 300); },
     hit() { this.tone(90, 0.09, 'square', 0.28, 40); this.noise(0.06, 0.2, 500); },
@@ -81,7 +90,98 @@
     die() { this.tone(220, 0.5, 'sawtooth', 0.25, 40); },
     click() { this.tone(700, 0.04, 'square', 0.12, 900); },
     car() { this.tone(80, 0.2, 'sawtooth', 0.2, 140); },
-    warn() { this.tone(880, 0.12, 'square', 0.18); setTimeout(() => this.tone(660, 0.14, 'square', 0.18), 140); }
+    warn() { this.tone(880, 0.12, 'square', 0.18); setTimeout(() => this.tone(660, 0.14, 'square', 0.18), 140); },
+
+    /* ---- ambient city soundscape ---- */
+    ambientOn: false,
+    startAmbient() {
+      if (!this.ctx || this.ambientOn) return;
+      this.ambientOn = true;
+      try {
+        const ctx = this.ctx;
+        // low city rumble: looping brown-ish noise + slow wind swell
+        const len = Math.floor(ctx.sampleRate * 3);
+        const buf = ctx.createBuffer(1, len, ctx.sampleRate);
+        const d = buf.getChannelData(0);
+        let last = 0;
+        for (let i = 0; i < len; i++) {
+          const w = Math.random() * 2 - 1;
+          last = (last + 0.02 * w) / 1.02;
+          d[i] = last * 3;
+          const edge = Math.min(i, len - i) / (ctx.sampleRate * 0.5); // fade ends -> seamless loop
+          d[i] *= Math.min(1, edge);
+        }
+        const src = ctx.createBufferSource(); src.buffer = buf; src.loop = true;
+        const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 340;
+        const g = ctx.createGain(); g.gain.value = 0.05;
+        const lfo = ctx.createOscillator(); lfo.frequency.value = 0.07;
+        const lg = ctx.createGain(); lg.gain.value = 0.022;
+        lfo.connect(lg); lg.connect(g.gain);
+        src.connect(lp); lp.connect(g); g.connect(this.master);
+        src.start(); lfo.start();
+        this.scheduleTraffic();
+        this.scheduleBirds();
+        this.scheduleSiren();
+      } catch (e) {}
+    },
+    scheduleTraffic() {
+      const loop = () => { setTimeout(() => { this.passBy(); loop(); }, 3500 + Math.random() * 6500); };
+      loop();
+    },
+    passBy() {
+      if (!this.ctx) return;
+      const ctx = this.ctx, t = ctx.currentTime, dur = 1.4;
+      const len = Math.floor(ctx.sampleRate * dur);
+      const buf = ctx.createBuffer(1, len, ctx.sampleRate);
+      const d = buf.getChannelData(0);
+      for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * Math.sin(Math.PI * i / len);
+      const s = ctx.createBufferSource(); s.buffer = buf;
+      const bp = ctx.createBiquadFilter(); bp.type = 'bandpass'; bp.Q.value = 0.8;
+      bp.frequency.setValueAtTime(300, t);
+      bp.frequency.linearRampToValueAtTime(900, t + dur / 2);
+      bp.frequency.linearRampToValueAtTime(250, t + dur);
+      const g = ctx.createGain(); g.gain.value = 0.09;
+      let out = g;
+      if (ctx.createStereoPanner) {
+        const p = ctx.createStereoPanner();
+        const dirL = Math.random() < 0.5 ? -1 : 1;
+        p.pan.setValueAtTime(-dirL, t);
+        p.pan.linearRampToValueAtTime(dirL, t + dur);
+        g.connect(p); out = p;
+      }
+      s.connect(bp); bp.connect(g); out.connect(this.master);
+      s.start(t);
+    },
+    scheduleBirds() {
+      const loop = () => { setTimeout(() => { this.birdChirps(); loop(); }, 4000 + Math.random() * 9000); };
+      loop();
+    },
+    birdChirps() {
+      if (!this.ctx) return;
+      const n = 2 + ((Math.random() * 3) | 0);
+      for (let i = 0; i < n; i++) setTimeout(() => this.chirp(), i * (90 + Math.random() * 120));
+    },
+    chirp() {
+      if (!this.ctx) return;
+      const f = 2100 + Math.random() * 1600;
+      this.tone(f, 0.07, 'sine', 0.035, f * (0.55 + Math.random() * 0.3));
+    },
+    scheduleSiren() {
+      const loop = () => { setTimeout(() => { this.distantSiren(); loop(); }, 24000 + Math.random() * 30000); };
+      loop();
+    },
+    distantSiren() {
+      if (!this.ctx) return;
+      const ctx = this.ctx, t = ctx.currentTime;
+      const o = ctx.createOscillator(), g = ctx.createGain(), lp = ctx.createBiquadFilter();
+      o.type = 'triangle'; lp.type = 'lowpass'; lp.frequency.value = 900;
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.linearRampToValueAtTime(0.05, t + 2.5);
+      g.gain.linearRampToValueAtTime(0.0001, t + 7);
+      o.connect(lp); lp.connect(g); g.connect(this.master);
+      for (let k = 0; k < 7; k++) o.frequency.setValueAtTime(k % 2 ? 720 : 560, t + k);
+      o.start(t); o.stop(t + 7.2);
+    }
   };
 
   /* ---------------- Renderer / Scene ---------------- */
@@ -381,7 +481,7 @@
 
     return {
       group: g, pos: new THREE.Vector3(0, 0, 6), vel: new THREE.Vector3(),
-      hp: 100, maxHp: 100, weapon: 0, ammo: 0,
+      hp: 100, maxHp: 100, weapon: 0, ammo: 0, shotsFired: 0,
       wanted: 0, crimeTimer: 0, speed: 6.4, sprint: 1.65,
       inCar: null, muzzle,
       attackCd: 0, shotCd: 0, dead: false, lastFire: 0
@@ -510,6 +610,16 @@
     scene.add(m);
     splats.push({ mesh: m, life: 18 + rng() * 12, t: 0 });
   }
+  function ejectShell(pos, dir) {
+    const m = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.05, 0.12), new THREE.MeshBasicMaterial({ color: 0xd8a63a, transparent: true }));
+    m.position.copy(pos);
+    const side = new THREE.Vector3(dir.z, 0, -dir.x);   // perpendicular to aim
+    if (side.lengthSq() < 0.001) side.set(1, 0, 0);
+    side.normalize().multiplyScalar(1.2 + rng() * 1.6);
+    side.y = 2 + rng() * 1.5;
+    bloodParticles.push({ mesh: m, vel: side, life: 1.1, t: 0 });
+    scene.add(m);
+  }
   function spawnTracer(from, to, color) {
     const dir = new THREE.Vector3().subVectors(to, from);
     const len = dir.length();
@@ -587,15 +697,21 @@
     if (player.ammo <= 0) { setPlayerWeapon(0); toast('HẾT ĐẠN! Nhấn R để nạp đạn'); return; }
     player.shotCd = 0.28;
     player.ammo = Math.max(0, player.ammo - 1);
+    player.shotsFired = (player.shotsFired || 0) + 1;
     Sfx.shoot();
     const a = aimInfo();
-    const muzzle = player.group.localToWorld(player.muzzle.position.clone());
-    spawnMuzzle(muzzle);
+    const muzzleW = player.group.localToWorld(player.muzzle.position.clone());
+    spawnMuzzle(muzzleW);
+    ejectShell(muzzleW, a.dir);
+    pulseAmmo();
+    updateAmmoHUD();
+    updateShotsHUD();
+    floatText(String(player.ammo), mouse.x + 18, mouse.y - 22, '#7df');
 
     // slight spread
     const spread = new THREE.Vector3((rng() - 0.5) * 0.06, (rng() - 0.5) * 0.04, (rng() - 0.5) * 0.06);
     const dir = a.dir.clone().add(new THREE.Vector3(0, 0.12, 0)).add(spread).normalize();
-    _ray.set(muzzle, dir);
+    _ray.set(muzzleW, dir);
     _ray.far = 140;
     const hits = _ray.intersectObjects(hittables, false);
     let hitOwner = null, hitPoint = null, hitHead = false;
@@ -606,16 +722,18 @@
       hitPoint = h.point;
     } else {
       // fall back: extend to ground
-      const tg = -muzzle.y / dir.y;
-      hitPoint = muzzle.clone().addScaledVector(dir, Math.max(tg, 0));
+      const tg = -muzzleW.y / dir.y;
+      hitPoint = muzzleW.clone().addScaledVector(dir, Math.max(tg, 0));
     }
-    spawnTracer(muzzle, hitPoint, 0xffe08a);
+    spawnTracer(muzzleW, hitPoint, 0xffe08a);
 
     if (hitOwner) {
       if (hitOwner.type === 'civilian' || hitOwner.type === 'police') {
         const dmg = hitHead ? 60 : 26;
         damageNPC(hitOwner, dmg, hitPoint, dir);
         triggerCrime(hitOwner.type === 'police' ? 1.6 : 0.9);
+        floatText(hitHead ? 'HEADSHOT!' : 'TRÚNG!', mouse.x + 18, mouse.y - 44, '#f66');
+        hitMark();
       } else if (hitOwner.group && !hitOwner.dead) {
         // car
         spawnBlood(hitPoint, dir, 4);
@@ -632,7 +750,6 @@
       setTimeout(() => setPlayerWeapon(0), 250);
       toast('HẾT ĐẠN! Đấm tay thôi');
     }
-    updateAmmoHUD();
   }
 
   function meleeAttack() {
@@ -665,6 +782,8 @@
     if (!hitAny) {
       // swing whoosh visual: brief arm anim handled by cooldown
       if (isKnife) Sfx.click();
+    } else {
+      hitMark();
     }
   }
 
@@ -962,7 +1081,7 @@
     if (code === 'Digit1' || code === 'Numpad1') setPlayerWeapon(0);
     else if (code === 'Digit2' || code === 'Numpad2') setPlayerWeapon(1);
     else if (code === 'Digit3' || code === 'Numpad3') setPlayerWeapon(2);
-    else if (code === 'KeyR') { player.ammo = 30; updateAmmoHUD(); Sfx.click(); toast('Đã nạp đạn: 30'); }
+    else if (code === 'KeyR') { player.ammo = MAG_SIZE; updateAmmoHUD(); Sfx.click(); toast('Đã nạp đầy: ' + MAG_SIZE + ' viên'); }
     else if (code === 'KeyE') { if (player.inCar) exitCar(); else enterCar(); }
   }
 
@@ -1152,6 +1271,7 @@
   const healthFill = document.getElementById('healthFill');
   const wantedBox = document.getElementById('wantedBox');
   const ammoN = document.getElementById('ammoN');
+  const shotsEl = document.getElementById('shotsN');
   const msgEl = document.getElementById('msg');
   const flashEl = document.getElementById('flash');
   const crosshair = document.getElementById('crosshair');
@@ -1175,7 +1295,30 @@
     if (player.weapon === 2) ammoN.textContent = player.ammo === Infinity ? '∞' : player.ammo;
     else if (player.weapon === 1) ammoN.textContent = '—';
     else ammoN.textContent = '—';
-    ammoN.parentElement.style.color = player.weapon === 2 ? '#0ff' : '#fff';
+  }
+  function updateShotsHUD() { if (shotsEl) shotsEl.textContent = player.shotsFired || 0; }
+  function pulseAmmo() {
+    ammoN.classList.remove('pulse');
+    void ammoN.offsetWidth;           // restart CSS animation
+    ammoN.classList.add('pulse');
+  }
+  let hitT = null;
+  function hitMark() {
+    crosshair.classList.add('hit');
+    clearTimeout(hitT);
+    hitT = setTimeout(() => crosshair.classList.remove('hit'), 140);
+  }
+  function floatText(txt, x, y, color) {
+    const old = document.querySelectorAll('.floater');
+    if (old.length > 12) old[0].remove();
+    const el = document.createElement('div');
+    el.className = 'floater';
+    el.textContent = txt;
+    el.style.left = x + 'px';
+    el.style.top = y + 'px';
+    if (color) el.style.color = color;
+    document.body.appendChild(el);
+    setTimeout(() => el.remove(), 750);
   }
   function toast(text) {
     msgEl.textContent = text;
@@ -1256,13 +1399,15 @@
     spawnWorld();
     player = createPlayer();
     player.group.position.copy(player.pos);
-    player.ammo = 30; // 30 rounds, press R to reload
+    player.ammo = MAG_SIZE;
+    Sfx.startAmbient();
     buildStars();
     buildMinimapStatic();
     updateHealthHUD();
     updateWantedHUD();
     updateWeaponHUD();
     updateAmmoHUD();
+    updateShotsHUD();
     updateCrosshair();
     document.getElementById('startOverlay').classList.add('hidden');
     toast('Chào mừng đến Pixel City! Nhấn CLICK để tấn công.');
