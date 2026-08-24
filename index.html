@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+<title>PIXEL CITY — Open World GTA (Chinatown Wars style)</title>
+<style>
+  :root{
+    --ui: #0ff;
+    --ui2: #fff;
+    --danger: #f33;
+  }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  html, body {
+    width:100%; height:100%; overflow:hidden; background:#000;
+    font-family: "Courier New", "Lucida Console", monospace;
+    -webkit-font-smoothing: none;
+    user-select:none; -webkit-user-select:none;
+    touch-action:none;
+  }
+  #game { position:fixed; inset:0; display:block; image-rendering: pixelated; image-rendering: crisp-edges; }
+  /* ---- HUD ---- */
+  .hud { position:fixed; z-index:10; pointer-events:none; color:#fff; text-shadow:2px 2px 0 #000; }
+  #healthBox { top:14px; left:14px; }
+  #healthBox .label { font-size:12px; letter-spacing:2px; margin-bottom:3px; color:var(--ui2); }
+  #healthBar { width:190px; height:16px; border:2px solid #000; background:#300; box-shadow:0 0 0 2px #fff; }
+  #healthFill { height:100%; width:100%; background:linear-gradient(#4f4,#2a2); transition:width .15s; }
+  #wantedBox { margin-top:8px; display:flex; gap:3px; }
+  .star { width:18px; height:18px; color:#333; font-size:20px; line-height:18px; text-align:center; text-shadow:none; }
+  .star.on { color:#ff0; text-shadow:0 0 6px #f80; }
+  #weaponBox { bottom:16px; left:14px; }
+  .wslot { display:inline-block; padding:6px 10px; margin-right:6px; border:2px solid #000; background:rgba(0,0,0,.45); font-size:12px; letter-spacing:1px; box-shadow:0 0 0 2px rgba(255,255,255,.25); }
+  .wslot.active { box-shadow:0 0 0 2px var(--ui); color:var(--ui); background:rgba(0,0,0,.7); }
+  .wslot .key { color:#888; margin-right:5px; }
+  #ammoBox { bottom:16px; right:14px; text-align:right; font-size:14px; letter-spacing:1px; }
+  #ammoBox .n { color:var(--ui); font-size:22px; }
+  #msg { bottom:66px; left:50%; transform:translateX(-50%); text-align:center; font-size:13px; letter-spacing:1px; color:#ff0; opacity:0; transition:opacity .3s; white-space:nowrap; }
+  #hint { top:14px; right:14px; text-align:right; font-size:11px; line-height:1.7; color:#ddd; }
+  #hint b { color:var(--ui); }
+  /* ---- Crosshair ---- */
+  #crosshair { position:fixed; z-index:9; width:26px; height:26px; margin:-13px 0 0 -13px; pointer-events:none; }
+  #crosshair::before, #crosshair::after { content:""; position:absolute; background:rgba(255,255,255,.9); box-shadow:0 0 3px #000; }
+  #crosshair::before { left:50%; top:0; width:2px; height:100%; margin-left:-1px; }
+  #crosshair::after { top:50%; left:0; height:2px; width:100%; margin-top:-1px; }
+  #crosshair .dot { position:absolute; left:50%; top:50%; width:4px; height:4px; margin:-2px; background:#f44; border-radius:50%; }
+  /* ---- Minimap ---- */
+  #minimapBox { top:14px; right:14px; border:2px solid #000; box-shadow:0 0 0 2px rgba(255,255,255,.4); background:#000; }
+  #minimap { display:block; image-rendering: pixelated; }
+  #minimapBox .caption { font-size:9px; letter-spacing:2px; color:var(--ui); text-align:center; padding:2px 0; }
+  /* ---- Overlays ---- */
+  .overlay { position:fixed; inset:0; z-index:20; display:flex; flex-direction:column; align-items:center; justify-content:center; background:rgba(0,0,0,.78); color:#fff; text-align:center; }
+  .overlay h1 { font-size:38px; letter-spacing:4px; color:var(--ui); text-shadow:3px 3px 0 #000; margin-bottom:6px; }
+  .overlay .sub { font-size:13px; color:#ccc; letter-spacing:2px; margin-bottom:22px; }
+  .overlay .controls { font-size:13px; line-height:2; color:#eee; }
+  .overlay .controls b { color:var(--ui); }
+  .btn { pointer-events:auto; cursor:pointer; margin-top:22px; padding:12px 30px; font-family:inherit; font-size:16px; letter-spacing:3px; color:#000; background:var(--ui); border:3px solid #000; box-shadow:0 0 0 3px #fff; text-transform:uppercase; }
+  .btn:hover { background:#fff; }
+  #wasted { background:rgba(60,0,0,.82); }
+  #wasted h1 { color:#f33; }
+  #flash { position:fixed; inset:0; z-index:8; pointer-events:none; background:#f00; opacity:0; }
+  .hidden { display:none !important; }
+</style>
+</head>
+<body>
+  <canvas id="game"></canvas>
+  <div id="flash"></div>
+
+  <div id="crosshair"><div class="dot"></div></div>
+
+  <!-- HUD -->
+  <div id="healthBox" class="hud">
+    <div class="label">HEALTH</div>
+    <div id="healthBar"><div id="healthFill"></div></div>
+    <div id="wantedBox"></div>
+  </div>
+
+  <div id="weaponBox" class="hud">
+    <span class="wslot" data-w="0"><span class="key">1</span>TAY</span>
+    <span class="wslot" data-w="1"><span class="key">2</span>DAO</span>
+    <span class="wslot" data-w="2"><span class="key">3</span>SÚNG</span>
+  </div>
+
+  <div id="ammoBox" class="hud">ĐẠN: <span class="n" id="ammoN">∞</span></div>
+  <div id="msg" class="hud"></div>
+
+  <div id="hint" class="hud">
+    <b>WASD</b> di chuyển &nbsp; <b>SHIFT</b> chạy<br>
+    <b>CHUỘT</b> ngắm &nbsp; <b>CLICK</b> tấn công<br>
+    <b>E</b> lên/xuống xe &nbsp; <b>1·2·3</b> đổi vũ khí &nbsp; <b>R</b> nạp đạn
+  </div>
+
+  <div id="minimapBox" class="hud">
+    <canvas id="minimap" width="150" height="150"></canvas>
+    <div class="caption">MAP</div>
+  </div>
+
+  <!-- Start overlay -->
+  <div id="startOverlay" class="overlay">
+    <h1>PIXEL CITY</h1>
+    <div class="sub">OPEN WORLD · TOP-DOWN 3D · GTA CHINATOWN WARS STYLE</div>
+    <div class="controls">
+      <b>WASD / Mũi tên</b> — di chuyển &nbsp;&nbsp; <b>SHIFT</b> — chạy<br>
+      <b>Chuột</b> — ngắm &nbsp;&nbsp; <b>Click trái</b> — đánh / bắn<br>
+      <b>1 / 2 / 3</b> — tay · dao · súng &nbsp;&nbsp; <b>E</b> — lên xuống xe &nbsp;&nbsp; <b>R</b> — nạp đạn<br><br>
+      Đánh dân thường hay cảnh sát để gây chiến và bị truy nã!
+    </div>
+    <button class="btn" id="startBtn">▶ BẮT ĐẦU</button>
+  </div>
+
+  <!-- Wasted overlay -->
+  <div id="wasted" class="overlay hidden">
+    <h1>WASTED</h1>
+    <div class="sub">Bạn đã bị hạ gục...</div>
+    <button class="btn" id="respawnBtn">HỒI SINH</button>
+  </div>
+
+  <script src="lib/three.min.js"></script>
+  <script src="js/game.js"></script>
+</body>
+</html>
