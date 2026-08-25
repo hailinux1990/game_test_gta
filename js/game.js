@@ -7,7 +7,18 @@
 
   /* ---------------- Config ---------------- */
   const PIXEL_SCALE = 2;          // render at 1/N resolution, upscale -> pixel look
-  const MAG_SIZE = 100;           // rounds per full magazine (R to reload)
+  const MAG_SIZE = 100;           // pistol rounds per full magazine (R to reload)
+  const AK_MAG = 500;             // AK-47 rounds per full magazine
+
+  /* ---- Weapon table ---- */
+  const WEAPONS = [
+    { name: 'TAY',   kind: 'melee', dmg: 12, cd: 0.4,  range: 1.6 },
+    { name: 'DAO',   kind: 'melee', dmg: 34, cd: 0.4,  range: 1.9 },
+    { name: 'SÚNG',  kind: 'gun', dmg: 26, headDmg: 60, cd: 0.28, mag: MAG_SIZE, range: 220, spread: 0.035, carHits: 6, snd: 'shoot', tracer: 0xffe08a },
+    { name: 'AK-47', kind: 'gun', dmg: 30, headDmg: 75, cd: 0.10, mag: AK_MAG,   range: 340, spread: 0.012, carHits: 3, snd: 'ak',    tracer: 0xffc46a }
+  ];
+  const ASSIST_ANGLE = 0.12;      // rad (~7°) aim-assist cone onto NPCs
+  const ASSIST_RANGE = 120;       // max distance for aim-assist
   const CELL = 35;                // block + road pitch
   const ROAD = 9;                 // road width
   const BLOCK = CELL - ROAD;      // buildable block width (26)
@@ -83,6 +94,7 @@
       src.start(t);
     },
     shoot() { this.noise(0.12, 0.5, 2600, true); this.tone(140, 0.09, 'square', 0.25, 50); },
+    ak() { this.noise(0.1, 0.55, 2100, true); this.tone(110, 0.08, 'square', 0.24, 45); this.noise(0.04, 0.2, 4200); },
     punch() { this.tone(200, 0.07, 'square', 0.22, 90); this.noise(0.05, 0.15, 700); },
     knife() { this.noise(0.08, 0.2, 5200); this.tone(900, 0.06, 'sawtooth', 0.1, 300); },
     hit() { this.tone(90, 0.09, 'square', 0.28, 40); this.noise(0.06, 0.2, 500); },
@@ -419,8 +431,8 @@
     const bodyC = opt.color || 0xc23a2e;
     const body = new THREE.Mesh(new THREE.BoxGeometry(1.7, 0.5, 3.3), mat(bodyC));
     body.position.y = 0.62;
-    const cabin = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.5, 1.7), mat(opt.isPolice ? 0x14181f : 0x25303c));
-    cabin.position.set(0, 1.12, -0.15);
+    const cabin = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.6, 1.7), mat(opt.isPolice ? 0x14181f : 0x25303c));
+    cabin.position.set(0, 1.18, -0.15);
     const hood = new THREE.Mesh(new THREE.BoxGeometry(1.6, 0.12, 0.9), mat(bodyC));
     hood.position.set(0, 0.88, 1.35);
     const trunk = new THREE.Mesh(new THREE.BoxGeometry(1.6, 0.12, 0.8), mat(bodyC));
@@ -438,17 +450,34 @@
 
     if (opt.isPolice) {
       const bar = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.16, 0.9), mat(0x222));
-      bar.position.set(0, 1.42, -0.15);
+      bar.position.set(0, 1.56, -0.15);
       const lr = new THREE.Mesh(new THREE.BoxGeometry(0.52, 0.14, 0.32), new THREE.MeshBasicMaterial({ color: 0xff2222 }));
-      lr.position.set(0, 1.5, -0.15);
+      lr.position.set(0, 1.64, -0.15);
       const lb = new THREE.Mesh(new THREE.BoxGeometry(0.52, 0.14, 0.32), new THREE.MeshBasicMaterial({ color: 0x2244ff }));
-      lb.position.set(0, 1.5, -0.15);
+      lb.position.set(0, 1.64, -0.15);
       g.add(bar, lr, lb);
       g.userData.lightRed = lr; g.userData.lightBlue = lb;
     }
     g.add(blobShadow(1.1));
     g.userData.wheels = wheels;
     g.userData.body = body;
+    return g;
+  }
+
+  // small driver figure seated inside the cabin (visible from top-down)
+  function makeDriver(isPolice) {
+    const g = new THREE.Group();
+    const shirt = isPolice ? 0x1f3a6f : CIV_SHIRTS[(rng() * CIV_SHIRTS.length) | 0];
+    const torso = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.42, 0.26), mat(shirt));
+    torso.position.set(-0.34, 0.96, -0.2);
+    const head = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.3, 0.3), mat(0xe8b88a));
+    head.position.set(-0.34, 1.3, -0.2);
+    g.add(torso, head);
+    if (isPolice) {
+      const cap = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.1, 0.34), mat(0x1f3a6f));
+      cap.position.set(-0.34, 1.5, -0.2);
+      g.add(cap);
+    }
     return g;
   }
 
@@ -474,27 +503,46 @@
     const gun = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.16, 0.34), new THREE.MeshLambertMaterial({ color: 0x1c1c1c }));
     gun.position.set(0.02, -0.02, 0.2);
 
-    g.userData.knife = knife; g.userData.gun = gun;
+    // AK-47: receiver + wooden stock + curved magazine
+    const ak = new THREE.Group();
+    const akBody = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.14, 0.74), mat(0x2a2a2e));
+    const akBarrel = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.05, 0.3), mat(0x161616));
+    akBarrel.position.set(0, 0.03, 0.5);
+    const akWood = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.12, 0.32), mat(0x7a4a22));
+    akWood.position.set(0, -0.02, -0.3);
+    const akMag = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.24, 0.11), mat(0x1c1c1c));
+    akMag.position.set(0, -0.17, 0.08);
+    akMag.rotation.x = 0.4;
+    ak.add(akBody, akBarrel, akWood, akMag);
+    ak.position.set(0.02, -0.04, 0.28);
+
+    g.userData.knife = knife; g.userData.gun = gun; g.userData.ak = ak;
 
     const muzzle = new THREE.Group();
     muzzle.position.set(0, 1.45, 0.42);
 
     return {
       group: g, pos: new THREE.Vector3(0, 0, 6), vel: new THREE.Vector3(),
-      hp: 100, maxHp: 100, weapon: 0, ammo: 0, shotsFired: 0,
+      hp: 100, maxHp: 100, weapon: 0,
+      ammoStore: { 2: MAG_SIZE, 3: AK_MAG },   // per-weapon reserve
+      shotsFired: 0,
       wanted: 0, crimeTimer: 0, speed: 6.4, sprint: 1.65,
       inCar: null, muzzle,
       attackCd: 0, shotCd: 0, dead: false, lastFire: 0
     };
   }
 
+  function getAmmo(w) { return player.ammoStore[w] || 0; }
+  function setAmmo(w, v) { player.ammoStore[w] = Math.max(0, v); }
+
   function setPlayerWeapon(w) {
     if (!player) return;
     player.weapon = w;
     const g = player.group, u = g.userData;
-    g.remove(u.knife); g.remove(u.gun);
+    g.remove(u.knife); g.remove(u.gun); g.remove(u.ak);
     if (w === 1) g.add(u.knife);
     else if (w === 2) g.add(u.gun);
+    else if (w === 3) g.add(u.ak);
     Sfx.click();
     updateWeaponHUD();
   }
@@ -547,6 +595,7 @@
     g.userData.parts.forEach(p => p.userData.owner = npc);
     g.userData.head.userData.head = true;
     NPCs.push(npc);
+    npc.group.userData.parts.forEach(p => hittables.push(p));
     return npc;
   }
 
@@ -560,11 +609,18 @@
     const car = {
       group: g, route, wpIndex: wp, pos: start.clone(), heading: 0, speed: opt.speed || 7.5,
       isPolice: !!opt.isPolice, color: opt.color, maxSpeed: opt.speed || 7.5,
-      laneOffset: (rng() < 0.5 ? 1 : -1) * (ROAD / 4), honkT: 0, dead: false
+      curSpeed: opt.speed || 7.5,
+      laneOffset: (rng() < 0.5 ? 1 : -1) * (ROAD / 4), honkT: 0, dead: false,
+      stolen: false, driverMesh: null
     };
+    // every AI car starts with a visible driver inside
+    const drv = makeDriver(car.isPolice);
+    g.add(drv);
+    car.driverMesh = drv;
     g.userData.owner = car;
     g.userData.body.userData.owner = car;
     cars.push(car);
+    hittables.push(g.userData.body);
     return car;
   }
 
@@ -580,9 +636,6 @@
     for (let i = 0; i < 4; i++) makeCarEntity({ isPolice: true, color: 0xe8e8e8, speed: 9.5 });
     for (let i = 0; i < 6; i++) makeCarEntity({ color: [0x2e6fc2, 0x2e8f4a, 0xc2a02e, 0x4a4a52, 0x8a5a2e][(rng() * 5) | 0], speed: 6 + rng() * 3 });
 
-    // collect hittables
-    NPCs.forEach(n => n.group.userData.parts.forEach(p => hittables.push(p)));
-    cars.forEach(c => hittables.push(c.group.userData.body));
     spawned = true;
   }
 
@@ -692,13 +745,37 @@
     return { point: _aim, dir: _aimDir };
   }
 
+  // ---- Aim assist ("chỉnh tâm"): snap shots toward civilians/police near the crosshair ----
+  const _assistPt = new THREE.Vector3();
+  function findAssistTarget(origin, aimDirXZ, maxDist) {
+    let best = null, bestAng = ASSIST_ANGLE;
+    for (let i = 0; i < NPCs.length; i++) {
+      const n = NPCs[i];
+      if (n.dead) continue;
+      const dx = n.pos.x - origin.x, dz = n.pos.z - origin.z;
+      const dist = Math.hypot(dx, dz);
+      if (dist < 0.8 || dist > maxDist) continue;
+      const dot = (dx * aimDirXZ.x + dz * aimDirXZ.z) / dist;
+      const ang = Math.acos(Math.max(-1, Math.min(1, dot)));
+      if (ang >= bestAng) continue;
+      if (!hasLOS(origin, n.pos)) continue;   // no assist through walls
+      bestAng = ang; best = n;
+    }
+    if (!best) return null;
+    const head = bestAng < 0.035;             // dead-centre crosshair -> headshot
+    _assistPt.set(best.pos.x, head ? 1.64 : 1.08, best.pos.z);
+    return _assistPt;
+  }
+
   function fireGun() {
+    const w = WEAPONS[player.weapon];
+    if (!w || w.kind !== 'gun') return;
     if (player.shotCd > 0) return;
-    if (player.ammo <= 0) { setPlayerWeapon(0); toast('HẾT ĐẠN! Nhấn R để nạp đạn'); return; }
-    player.shotCd = 0.28;
-    player.ammo = Math.max(0, player.ammo - 1);
+    if (getAmmo(player.weapon) <= 0) { toast('HẾT ĐẠN ' + w.name + '! Nhấn R để nạp'); player.shotCd = 0.4; return; }
+    player.shotCd = w.cd;
+    setAmmo(player.weapon, getAmmo(player.weapon) - 1);
     player.shotsFired = (player.shotsFired || 0) + 1;
-    Sfx.shoot();
+    Sfx[w.snd]();
     const a = aimInfo();
     const muzzleW = player.group.localToWorld(player.muzzle.position.clone());
     spawnMuzzle(muzzleW);
@@ -706,13 +783,20 @@
     pulseAmmo();
     updateAmmoHUD();
     updateShotsHUD();
-    floatText(String(player.ammo), mouse.x + 18, mouse.y - 22, '#7df');
+    floatText(String(getAmmo(player.weapon)), mouse.x + 18, mouse.y - 22, '#7df');
 
-    // slight spread
-    const spread = new THREE.Vector3((rng() - 0.5) * 0.06, (rng() - 0.5) * 0.04, (rng() - 0.5) * 0.06);
-    const dir = a.dir.clone().add(new THREE.Vector3(0, 0.12, 0)).add(spread).normalize();
+    // direction: aim-assist onto NPCs first, otherwise free aim + small spread
+    const dir = new THREE.Vector3();
+    const assist = findAssistTarget(muzzleW, a.dir, Math.min(w.range, ASSIST_RANGE));
+    if (assist) dir.copy(assist).sub(muzzleW).normalize();
+    else dir.copy(a.dir).add(new THREE.Vector3(0, 0.12, 0));
+    dir.x += (rng() - 0.5) * w.spread;
+    dir.y += (rng() - 0.5) * w.spread * 0.6;
+    dir.z += (rng() - 0.5) * w.spread;
+    dir.normalize();
+
     _ray.set(muzzleW, dir);
-    _ray.far = 140;
+    _ray.far = w.range;                       // bullets fly much farther now
     const hits = _ray.intersectObjects(hittables, false);
     let hitOwner = null, hitPoint = null, hitHead = false;
     if (hits.length) {
@@ -725,11 +809,11 @@
       const tg = -muzzleW.y / dir.y;
       hitPoint = muzzleW.clone().addScaledVector(dir, Math.max(tg, 0));
     }
-    spawnTracer(muzzleW, hitPoint, 0xffe08a);
+    spawnTracer(muzzleW, hitPoint, w.tracer);
 
     if (hitOwner) {
       if (hitOwner.type === 'civilian' || hitOwner.type === 'police') {
-        const dmg = hitHead ? 60 : 26;
+        const dmg = hitHead ? w.headDmg : w.dmg;
         damageNPC(hitOwner, dmg, hitPoint, dir);
         triggerCrime(hitOwner.type === 'police' ? 1.6 : 0.9);
         floatText(hitHead ? 'HEADSHOT!' : 'TRÚNG!', mouse.x + 18, mouse.y - 44, '#f66');
@@ -737,19 +821,14 @@
       } else if (hitOwner.group && !hitOwner.dead) {
         // car
         spawnBlood(hitPoint, dir, 4);
-        if (!hitOwner.shot) hitOwner.shot = 0;
-        hitOwner.shot++;
-        if (hitOwner.shot > 5) explodeCar(hitOwner);
+        hitOwner.shot = (hitOwner.shot || 0) + 1;
+        if (hitOwner.shot >= w.carHits) explodeCar(hitOwner);
       }
     } else {
       spawnSplat(hitPoint.clone().setY(0));
     }
 
-    // muzzle flash light near camera? skip
-    if (player.ammo <= 0 && player.weapon === 2) {
-      setTimeout(() => setPlayerWeapon(0), 250);
-      toast('HẾT ĐẠN! Đấm tay thôi');
-    }
+    if (getAmmo(player.weapon) <= 0) toast('HẾT ĐẠN! Nhấn R để nạp');
   }
 
   function meleeAttack() {
@@ -990,28 +1069,38 @@
   function updateCar(car, dt) {
     if (car.dead) return;
     if (car.driver) return;   // player-driven
+
     const route = car.route;
     const wp = new THREE.Vector3(route[car.wpIndex][0], 0, route[car.wpIndex][1]);
-    const toWp = wp.clone().sub(car.pos);
-    const dist = toWp.length();
-    if (dist < 2.5) car.wpIndex = (car.wpIndex + 1) % route.length;
+    if (wp.clone().sub(car.pos).length() < 2.5) car.wpIndex = (car.wpIndex + 1) % route.length;
 
-    const desired = Math.atan2(toWp.x, toWp.z);
-    let dh = desired - car.heading;
-    while (dh > Math.PI) dh -= Math.PI * 2;
-    while (dh < -Math.PI) dh += Math.PI * 2;
-    car.heading += dh * Math.min(1, dt * 4);
+    // The hero is untouchable: whenever he stands close on foot,
+    // the car hard-brakes and STOPS instead of running him over.
+    const playerNear = !player.inCar && !player.dead && car.pos.distanceTo(player.pos) < 4.5;
+    if (playerNear) {
+      car.curSpeed = Math.max(0, car.curSpeed - dt * 20);   // phanh gấp -> dừng lại
+    } else {
+      car.curSpeed = Math.min(car.maxSpeed, car.curSpeed + dt * 4);
+    }
 
     const fwd = new THREE.Vector3(Math.sin(car.heading), 0, Math.cos(car.heading));
-    car.pos.addScaledVector(fwd, car.speed * dt);
-    clampToWorld(car.pos);
+    if (car.curSpeed > 0.01) {
+      const desired = Math.atan2(wp.x - car.pos.x, wp.z - car.pos.z);
+      let dh = desired - car.heading;
+      while (dh > Math.PI) dh -= Math.PI * 2;
+      while (dh < -Math.PI) dh += Math.PI * 2;
+      car.heading += dh * Math.min(1, dt * 4);
+
+      car.pos.addScaledVector(fwd, car.curSpeed * dt);
+      clampToWorld(car.pos);
+    }
 
     // render with right-lane offset
     const right = new THREE.Vector3(Math.cos(car.heading), 0, -Math.sin(car.heading));
     const renderPos = car.pos.clone().addScaledVector(right, car.laneOffset);
     car.group.position.set(renderPos.x, 0, renderPos.z);
     car.group.rotation.y = car.heading;
-    car.group.userData.wheels.forEach(w => w.rotation.x += car.speed * dt * 4);
+    car.group.userData.wheels.forEach(w => w.rotation.x += car.curSpeed * dt * 4);
 
     // police light flicker
     if (car.group.userData.lightRed) {
@@ -1021,25 +1110,24 @@
       car.group.userData.lightBlue.visible = !on;
     }
 
-    // run over pedestrians
-    NPCs.forEach(n => {
-      if (n.dead) return;
-      const d = n.pos.clone().sub(renderPos).setY(0).length();
-      if (d < 1.1) {
-        damageNPC(n, 40, n.pos.clone().setY(1.0), fwd);
-        if (n.type === 'police') triggerCrime(1.5);
-        else triggerCrime(0.8);
-      }
-    });
-    if (!player.inCar && !player.dead) {
-      const d = player.pos.clone().sub(renderPos).setY(0).length();
-      if (d < 1.1) playerTakeDamage(25, renderPos);
+    // run over pedestrians — NPCs only, never the player
+    if (car.curSpeed > 2) {
+      NPCs.forEach(n => {
+        if (n.dead) return;
+        const d = n.pos.clone().sub(renderPos).setY(0).length();
+        if (d < 1.1) {
+          damageNPC(n, 40, n.pos.clone().setY(1.0), fwd);
+          if (n.type === 'police') triggerCrime(1.5);
+          else triggerCrime(0.8);
+        }
+      });
     }
+    // player takes NO damage from cars (chạm xe không chết)
   }
 
-  /* ---------------- Vehicle enter/exit ---------------- */
+  /* ---------------- Vehicle enter/exit (carjacking) ---------------- */
   function nearestCar() {
-    let best = null, bd = 3.2;
+    let best = null, bd = 3.4;
     cars.forEach(c => {
       if (c.dead) return;
       const d = c.group.position.distanceTo(player.pos);
@@ -1047,6 +1135,31 @@
     });
     return best;
   }
+
+  // kick the AI driver out of the car: he spawns beside the door and runs away
+  function ejectDriver(c) {
+    if (c.driverMesh) { c.group.remove(c.driverMesh); c.driverMesh = null; }
+    const type = c.isPolice ? 'police' : 'civilian';
+    const ped = makeNPC(type);
+    const side = new THREE.Vector3(Math.cos(c.heading), 0, -Math.sin(c.heading));
+    const p = c.group.position.clone().addScaledVector(side, -2.2);
+    p.y = 0;
+    if (isInsideBuilding(p.x, p.z)) p.copy(c.group.position).addScaledVector(side, 2.2);
+    clampToWorld(p);
+    ped.pos.copy(p);
+    ped.group.position.copy(p);
+    const away = ped.pos.clone().sub(player.pos).setY(0);
+    if (type === 'police') {
+      ped.state = 'chase'; ped.path = [];   // jacked cop is angry
+    } else {
+      ped.state = 'flee';
+      ped.fleeDir.copy(away.lengthSq() > 0.001 ? away.normalize() : new THREE.Vector3(1, 0, 0));
+      ped.fleeT = 7;
+    }
+    Sfx.warn();
+    return ped;
+  }
+
   function enterCar() {
     if (player.inCar) return;
     const c = nearestCar();
@@ -1054,8 +1167,18 @@
     player.inCar = c;
     c.driver = player;
     scene.remove(player.group);
+    if (!c.stolen) {
+      // TRỘM XE: this car still has its AI driver inside
+      c.stolen = true;
+      ejectDriver(c);
+      triggerCrime(c.isPolice ? 2.2 : 1.2);   // stealing raises the wanted stars
+      toast(c.isPolice
+        ? 'Trộm xe CẢNH SÁT! Cảnh sát đang truy đuổi!'
+        : 'Đã trộm xe — tài xế bị đẩy ra và bỏ chạy!');
+    } else {
+      toast('Đã lên xe — WASD lái, E xuống xe');
+    }
     Sfx.car();
-    toast('Đã lên xe — WASD lái, E xuống xe');
   }
   function exitCar() {
     if (!player.inCar) return;
@@ -1081,7 +1204,16 @@
     if (code === 'Digit1' || code === 'Numpad1') setPlayerWeapon(0);
     else if (code === 'Digit2' || code === 'Numpad2') setPlayerWeapon(1);
     else if (code === 'Digit3' || code === 'Numpad3') setPlayerWeapon(2);
-    else if (code === 'KeyR') { player.ammo = MAG_SIZE; updateAmmoHUD(); Sfx.click(); toast('Đã nạp đầy: ' + MAG_SIZE + ' viên'); }
+    else if (code === 'Digit4' || code === 'Numpad4') setPlayerWeapon(3);
+    else if (code === 'KeyR') {
+      const w = WEAPONS[player.weapon];
+      if (w && w.kind === 'gun') {
+        setAmmo(player.weapon, w.mag);
+        updateAmmoHUD();
+        Sfx.click();
+        toast('Đã nạp đầy ' + w.name + ': ' + w.mag + ' viên');
+      }
+    }
     else if (code === 'KeyE') { if (player.inCar) exitCar(); else enterCar(); }
   }
 
@@ -1198,7 +1330,8 @@
 
     // attacks
     if (mouse.down) {
-      if (player.weapon === 2) fireGun();
+      const w = WEAPONS[player.weapon];
+      if (w && w.kind === 'gun') fireGun();
       else meleeAttack();
     }
   }
@@ -1292,8 +1425,8 @@
     updateAmmoHUD();
   }
   function updateAmmoHUD() {
-    if (player.weapon === 2) ammoN.textContent = player.ammo === Infinity ? '∞' : player.ammo;
-    else if (player.weapon === 1) ammoN.textContent = '—';
+    const w = WEAPONS[player.weapon];
+    if (w && w.kind === 'gun') ammoN.textContent = getAmmo(player.weapon);
     else ammoN.textContent = '—';
   }
   function updateShotsHUD() { if (shotsEl) shotsEl.textContent = player.shotsFired || 0; }
@@ -1399,7 +1532,6 @@
     spawnWorld();
     player = createPlayer();
     player.group.position.copy(player.pos);
-    player.ammo = MAG_SIZE;
     Sfx.startAmbient();
     buildStars();
     buildMinimapStatic();
@@ -1425,6 +1557,9 @@
 
   document.getElementById('startBtn').addEventListener('click', start);
   document.getElementById('respawnBtn').addEventListener('click', respawn);
+
+  // debug / testing hook (harmless in production)
+  window.__GTA__ = { get player() { return player; }, NPCs, cars, WEAPONS, hittables, get camera() { return camera; }, get scene() { return scene; } };
 
   // build world immediately so background is visible behind overlay
   buildCity();
