@@ -1,6 +1,6 @@
 # game_test_gta
 PIXEL CITY — game thế giới mở top-down 3D kiểu GTA Chinatown Wars
-▶ Chơi ngay: http://127.0.0.1:8123/ (server đã chạy ở background). Hoặc mở trực tiếp file index.html — game chạy offline, không cần mạng vì Three.js đã tải về local.
+▶ Chơi ngay: http://127.0.0.1:8123/ — nếu trang không truy cập được, khởi động lại server bằng lệnh: `cd game_test_gta && python3 -m http.server 8123` (hoặc mở trực tiếp file index.html — game chạy offline, không cần mạng vì Three.js đã tải về local).
 
 File đã tạo
 index.html — giao diện: HUD máu, sao truy nã, bảng chọn vũ khí (4 slot), đạn, minimap, crosshair, màn hình bắt đầu / WASTED
