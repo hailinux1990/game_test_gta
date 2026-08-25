@@ -112,6 +112,18 @@
     ak() { this.noise(0.1, 0.55, 2100, true); this.tone(110, 0.08, 'square', 0.24, 45); this.noise(0.04, 0.2, 4200); },
     metalHit() { this.tone(1600 + Math.random() * 800, 0.05, 'square', 0.12, 600); this.noise(0.04, 0.16, 5200); },
     boom() { this.noise(0.5, 0.85, 900, true); this.tone(60, 0.5, 'sawtooth', 0.35, 24); this.noise(0.22, 0.4, 2400, true); },
+    siren() {
+      if (!this.ctx) return;
+      const t = this.ctx.currentTime;
+      const o = this.ctx.createOscillator(), g = this.ctx.createGain();
+      o.type = 'triangle';
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.linearRampToValueAtTime(0.085, t + 0.15);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + 1.3);
+      o.connect(g); g.connect(this.master);
+      for (let k = 0; k < 6; k++) o.frequency.setValueAtTime(k % 2 ? 760 : 590, t + k * 0.21);
+      o.start(t); o.stop(t + 1.35);
+    },
     punch() { this.tone(200, 0.07, 'square', 0.22, 90); this.noise(0.05, 0.15, 700); },
     knife() { this.noise(0.08, 0.2, 5200); this.tone(900, 0.06, 'sawtooth', 0.1, 300); },
     hit() { this.tone(90, 0.09, 'square', 0.28, 40); this.noise(0.06, 0.2, 500); },
@@ -661,7 +673,8 @@
       isPolice: !!opt.isPolice, color: opt.color, maxSpeed: opt.speed || 7.5,
       curSpeed: opt.speed || 7.5,
       laneOffset: (rng() < 0.5 ? 1 : -1) * (ROAD / 4), honkT: 0, dead: false,
-      stolen: false, driverMesh: null
+      stolen: false, driverMesh: null,
+      mode: 'traffic', deployed: false, deploySide: 2.2   // police pursuit state
     };
     // every AI car starts with a visible driver inside
     const drv = makeDriver(car.isPolice);
@@ -1214,6 +1227,7 @@
   }
 
   /* ---------------- AI: cars ---------------- */
+  let lastSirenAt = 0;
   function updateCar(car, dt) {
     if (car.dead) return;
     if (car.driver) return;   // player-driven
@@ -1236,30 +1250,17 @@
       }
     }
 
-    const route = car.route;
-    const wp = new THREE.Vector3(route[car.wpIndex][0], 0, route[car.wpIndex][1]);
-    if (wp.clone().sub(car.pos).length() < 2.5) car.wpIndex = (car.wpIndex + 1) % route.length;
-
-    // The hero is untouchable: whenever he stands close on foot,
-    // the car hard-brakes and STOPS instead of running him over.
-    const playerNear = !player.inCar && !player.dead && car.pos.distanceTo(player.pos) < 4.5;
-    if (playerNear) {
-      car.curSpeed = Math.max(0, car.curSpeed - dt * 20);   // phanh gấp -> dừng lại
-    } else {
-      car.curSpeed = Math.min(car.maxSpeed, car.curSpeed + dt * 4);
+    // ---- police PURSUIT mode: only while the hero is WANTED ----
+    const wanted = !player.dead && player.wanted > 0;
+    if (car.isPolice && wanted && car.mode !== 'pursuit') {
+      car.mode = 'pursuit';
+      car.deployed = false;              // fresh hunt -> fresh officer
+    } else if (car.mode === 'pursuit' && (!wanted || !car.isPolice)) {
+      car.mode = 'traffic';              // stars gone -> back to patrol
     }
 
-    const fwd = new THREE.Vector3(Math.sin(car.heading), 0, Math.cos(car.heading));
-    if (car.curSpeed > 0.01) {
-      const desired = Math.atan2(wp.x - car.pos.x, wp.z - car.pos.z);
-      let dh = desired - car.heading;
-      while (dh > Math.PI) dh -= Math.PI * 2;
-      while (dh < -Math.PI) dh += Math.PI * 2;
-      car.heading += dh * Math.min(1, dt * 4);
-
-      car.pos.addScaledVector(fwd, car.curSpeed * dt);
-      clampToWorld(car.pos);
-    }
+    if (car.mode === 'pursuit') drivePursuit(car, dt);
+    else driveTraffic(car, dt);
 
     // render with right-lane offset
     const right = new THREE.Vector3(Math.cos(car.heading), 0, -Math.sin(car.heading));
@@ -1268,27 +1269,123 @@
     car.group.rotation.y = car.heading;
     car.group.userData.wheels.forEach(w => w.rotation.x += car.curSpeed * dt * 4);
 
-    // police light flicker
+    // police light flicker + siren wail while hunting
     if (car.group.userData.lightRed) {
       const t = performance.now() / 160;
       const on = Math.floor(t) % 2 === 0;
       car.group.userData.lightRed.visible = on;
       car.group.userData.lightBlue.visible = !on;
+      if (car.mode === 'pursuit' && performance.now() - lastSirenAt > 4200 &&
+          car.pos.distanceTo(player.pos) < 50) {
+        lastSirenAt = performance.now();
+        Sfx.siren();
+      }
     }
 
-    // run over pedestrians — NPCs only, never the player
+    // run over pedestrians — NPCs only, never the player.
+    // The blame goes to the player ONLY when he is the one driving.
     if (car.curSpeed > 2) {
+      const fwd = new THREE.Vector3(Math.sin(car.heading), 0, Math.cos(car.heading));
       NPCs.forEach(n => {
         if (n.dead) return;
         const d = n.pos.clone().sub(renderPos).setY(0).length();
         if (d < 1.1) {
           damageNPC(n, 40, n.pos.clone().setY(1.0), fwd);
-          if (n.type === 'police') triggerCrime(1.5);
-          else triggerCrime(0.8);
+          if (car.driver) {
+            if (n.type === 'police') triggerCrime(1.5);
+            else triggerCrime(0.8);
+          }
         }
       });
     }
     // player takes NO damage from cars (chạm xe không chết)
+  }
+
+  // normal route traffic; always brakes for the hero standing ahead
+  function driveTraffic(car, dt) {
+    const route = car.route;
+    const wp = new THREE.Vector3(route[car.wpIndex][0], 0, route[car.wpIndex][1]);
+    if (wp.clone().sub(car.pos).length() < 2.5) car.wpIndex = (car.wpIndex + 1) % route.length;
+
+    const playerNear = !player.inCar && !player.dead && car.pos.distanceTo(player.pos) < 4.5;
+    if (playerNear) {
+      car.curSpeed = Math.max(0, car.curSpeed - dt * 20);   // phanh gấp -> dừng lại
+    } else {
+      car.curSpeed = Math.min(car.maxSpeed, car.curSpeed + dt * 4);
+    }
+
+    if (car.curSpeed > 0.01) {
+      steerToward(car, wp.x, wp.z, dt * 4, false);
+      const fwd = new THREE.Vector3(Math.sin(car.heading), 0, Math.cos(car.heading));
+      car.pos.addScaledVector(fwd, car.curSpeed * dt);
+      clampToWorld(car.pos);
+    }
+  }
+
+  // WANTED pursuit: race at the hero, stop close by, officer jumps out shooting
+  function drivePursuit(car, dt) {
+    const dist = car.pos.distanceTo(player.pos);
+
+    if (dist < 11) {
+      // arrived at the scene: skid to a halt and deploy an officer
+      car.curSpeed = Math.max(0, car.curSpeed - dt * 24);
+      if (car.curSpeed < 0.6 && !car.deployed) {
+        deployOfficer(car);
+        car.deployed = true;
+      }
+    } else {
+      car.curSpeed = Math.min(13, car.curSpeed + dt * 7);   // flat-out pursuit
+      if (car.deployed && dist > 16) car.deployed = false;  // lost him again? re-arm
+    }
+
+    if (car.curSpeed > 0.01) {
+      steerToward(car, player.pos.x, player.pos.z, dt * 3.2, true);
+      const fwd = new THREE.Vector3(Math.sin(car.heading), 0, Math.cos(car.heading));
+      const step = fwd.clone().multiplyScalar(car.curSpeed * dt);
+      car.pos.add(step);
+      if (isInsideBuilding(car.pos.x, car.pos.z)) car.pos.sub(step);   // never clip walls
+      clampToWorld(car.pos);
+    }
+  }
+
+  // shared steering; avoid mode probes ahead and swings around buildings
+  function steerToward(car, tx, tz, k, avoid) {
+    const desired = Math.atan2(tx - car.pos.x, tz - car.pos.z);
+    let dh = desired - car.heading;
+    while (dh > Math.PI) dh -= Math.PI * 2;
+    while (dh < -Math.PI) dh += Math.PI * 2;
+    if (avoid) {
+      const ahead = 3.4;
+      const fx = car.pos.x + Math.sin(car.heading) * ahead;
+      const fz = car.pos.z + Math.cos(car.heading) * ahead;
+      if (isInsideBuilding(fx, fz)) {
+        const lx = car.pos.x + Math.sin(car.heading + 0.9) * ahead;
+        const lz = car.pos.z + Math.cos(car.heading + 0.9) * ahead;
+        dh = (isInsideBuilding(lx, lz) ? -1 : 1) * 1.1;   // swing to the free side
+      }
+    }
+    car.heading += dh * Math.min(1, k);
+  }
+
+  // a police officer jumps out of the stopped cruiser and hunts the hero on foot
+  function deployOfficer(c) {
+    const ped = makeNPC('police');
+    c.deploySide = -(c.deploySide || 2.2);            // alternate doors
+    const side = new THREE.Vector3(Math.cos(c.heading), 0, -Math.sin(c.heading))
+      .multiplyScalar(c.deploySide);
+    const p = c.group.position.clone().add(side);
+    p.y = 0;
+    if (isInsideBuilding(p.x, p.z) || isInsideWater(p.x, p.z)) {
+      // on a bridge / tight spot: step out along the road instead
+      p.copy(c.group.position).add(new THREE.Vector3(0, 0, c.deploySide * 2.2));
+    }
+    clampToWorld(p);
+    ped.pos.copy(p);
+    ped.group.position.copy(p);
+    ped.state = 'chase';
+    ped.path = [];
+    Sfx.warn();
+    return ped;
   }
 
   /* ---------------- Vehicle enter/exit (carjacking) ---------------- */

@@ -238,5 +238,46 @@ step(120);                                         // let the fuse burn out
 check('chain reaction blew up the second car', c2.dead === true);
 check('dead wrecks removed from bullet targets', !G.hittables.includes(c1.group.userData.body));
 
+/* ================= TEST 6: WANTED -> police car PURSUIT -> officer deploys ===== */
+G.NPCs.forEach(n => { n.pos.set(400, 0, 400); n.group.position.set(400, 0, 400); });
+const copCar = G.cars.find(c => c.isPolice && !c.dead);
+G.cars.forEach(c => { if (c !== copCar) c.dead = true; });   // quiet streets for the test
+copCar.dead = false;
+copCar.mode = 'traffic';
+copCar.deployed = false;
+copCar.maxSpeed = 9.5; copCar.curSpeed = 0;
+copCar.laneOffset = 0;
+copCar.pos.set(player.pos.x, 0, player.pos.z - 30);          // 30 m up the same avenue
+copCar.group.position.copy(copCar.pos);
+copCar.heading = 0;                                          // facing the hero
+const npcsBeforePursuit = G.NPCs.length;
+player.inCar = null;
+player.wanted = 3;                                           // crime reported: heat is ON
+let sawPursuit = false, stoppedClose = false;
+for (let i = 0; i < 480; i++) {
+  now += 16;
+  const cb = rafCb; rafCb = null;
+  if (cb) cb();
+  if (copCar.mode === 'pursuit') sawPursuit = true;
+  const d = copCar.pos.distanceTo(player.pos);
+  if (sawPursuit && d <= 11.5 && copCar.curSpeed < 0.05) { stoppedClose = true; break; }
+}
+check('police cruiser switched to PURSUIT while wanted', sawPursuit);
+check('cruiser raced over and STOPPED near the hero (' +
+  copCar.pos.distanceTo(player.pos).toFixed(1) + ' m)', stoppedClose);
+check('police officer jumped OUT of the stopped cruiser', copCar.deployed === true);
+check('exactly one officer deployed', G.NPCs.length === npcsBeforePursuit + 1);
+const officer = G.NPCs.find(n => n.type === 'police' && n.state === 'chase' && !n.dead &&
+  n.pos.distanceTo(copCar.group.position) < 6);
+check('deployed officer hunts on foot right beside the cruiser', !!officer);
+check('officer is inside shooting range of the hero (<16 m)',
+  !!officer && officer.pos.distanceTo(player.pos) < 16);
+player.wanted = 0;                                           // heat off
+step(10);
+check('cruiser stands down to normal traffic when stars are gone', copCar.mode === 'traffic');
+const officerAfter = G.NPCs.find(n => n.type === 'police' && !n.dead &&
+  n.pos.distanceTo(copCar.group.position) < 8);
+check('deployed officer holsters and stops chasing', !!officerAfter && officerAfter.state !== 'chase');
+
 console.log(failures === 0 ? '\nALL SMOKE TESTS PASSED' : '\n' + failures + ' TEST(S) FAILED');
 process.exit(failures === 0 ? 0 : 1);
