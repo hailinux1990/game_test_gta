@@ -1,12 +1,14 @@
 /* Headless smoke test for PIXEL CITY (no GPU needed — WebGLRenderer is stubbed).
-   Verifies: AK-47 (500 rounds), aim-assist shots, cars brake/stop for the player
-   (player never hurt by cars), carjacking occupied cars. */
+   Run: node tests/smoke.test.cjs
+   Verifies: expanded GTA1-style map (river + bridges), AK-47 (500 rounds),
+   aim-assist shots, cars brake/stop for the player, carjacking occupied cars,
+   shoot-a-car-until-it-explodes with chain reactions. */
 'use strict';
 const fs = require('fs');
 const vm = require('vm');
 const path = require('path');
 
-const ROOT = path.join(__dirname, "..");
+const ROOT = path.join(__dirname, '..');
 
 /* ---------- black-hole proxy (2D context etc.) ---------- */
 function bhFactory() {
@@ -30,7 +32,6 @@ let now = 1000;
 global.performance = { now: () => now };
 
 /* ---------- DOM stubs ---------- */
-const handlers = {};
 function makeEl(id) {
   const el = {
     id, style: {}, dataset: {}, children: [], textContent: '', className: '', offsetWidth: 0,
@@ -46,6 +47,7 @@ function makeEl(id) {
   return el;
 }
 const els = {};
+const handlers = {};
 global.document = {
   getElementById(id) { return els[id] || (els[id] = makeEl(id)); },
   createElement(tag) { return makeEl('_' + tag + Math.random()); },
@@ -94,17 +96,20 @@ function key(c) { handlers.keydown({ code: c, preventDefault() {} }); }
 
 /* ---------- start game (now offset ensures first dt > 0) ---------- */
 els.startBtn._h.click[0]();
-step(10);
+step(170);           // let the chase-cam converge: screen-centre aim == straight ahead
 
 const player = G.player;
-check('game started, player exists', !!player);
-check('world spawned: NPCs=' + G.NPCs.length + ' cars=' + G.cars.length, G.NPCs.length > 40 && G.cars.length >= 15);
-check('every AI car has a visible driver mesh', G.cars.every(c => c.driverMesh !== null));
 
-/* move player to a clear road intersection (-17.5,-17.5); settle camera (~2.5 s) */
-player.pos.set(-17.5, 0, -17.5);
-player.group.position.copy(player.pos);
-step(160);
+/* ================= TEST 0: expanded GTA1-style map ================= */
+check('game started, player exists', !!player);
+check('map expanded to N=' + G.N + ' blocks per side (GTA 1 style)', G.N === 9);
+check('river runs through the city', Math.abs(G.RIVER_Z) > 0 && G.RIVER_HALF === 14);
+check('water detection works', G.isInsideWater(0, G.RIVER_Z) && !G.isInsideWater(0, G.RIVER_Z - 30));
+check('player spawns on open ground (no building/water)',
+  !G.isInsideBuilding(player.pos.x, player.pos.z) && !G.isInsideWater(player.pos.x, player.pos.z));
+check('world spawned: NPCs=' + G.NPCs.length + ' cars=' + G.cars.length,
+  G.NPCs.length === 60 && G.cars.length === 20);
+check('every AI car has a visible driver mesh', G.cars.every(c => c.driverMesh !== null));
 
 /* ================= TEST 1: AK-47 with 500 rounds ================= */
 key('Digit4');
@@ -121,7 +126,7 @@ check('R reloads AK-47 back to 500', player.ammoStore[3] === 500);
 
 /* ================= TEST 2: aim assist -> precise hit on NPC ================= */
 // clear every other NPC and car far away so the lane is guaranteed clean
-G.NPCs.forEach(n => { if (n !== undefined) { n.pos.set(400, 0, 400); n.group.position.set(400, 0, 400); } });
+G.NPCs.forEach(n => { n.pos.set(400, 0, 400); n.group.position.set(400, 0, 400); });
 G.cars.forEach(c => { c.pos.set(420, 0, 420); c.group.position.set(420, 0, 420); });
 const civ = G.NPCs.find(n => n.type === 'civilian' && !n.dead);
 civ.dead = false;
@@ -167,6 +172,7 @@ car.group.position.set(420, 0, 420);
 const victim = G.cars[1];
 victim.stolen = false;
 victim.dead = false;
+victim.maxSpeed = 0; victim.curSpeed = 0;         // keep it parked for the test
 victim.pos.set(player.pos.x + 2, 0, player.pos.z);
 victim.group.position.copy(victim.pos);
 const npcCountBefore = G.NPCs.length;
@@ -182,7 +188,55 @@ key('KeyE');                                       // exit
 check('player exited the car', player.inCar === null);
 key('KeyE');                                       // re-enter stolen car
 check('re-entering a stolen car spawns no extra driver', G.NPCs.length === npcCountBefore + 1 && player.inCar === victim);
-key('KeyE');
+key('KeyE');                                       // exit again
+
+/* ================= TEST 5: shoot a car until it EXPLODES (+ chain reaction) ===== */
+G.NPCs.forEach(n => { n.pos.set(400, 0, 400); n.group.position.set(400, 0, 400); });
+const c1 = G.cars[2], c2 = G.cars[3];
+[c1, c2].forEach(c => {                            // freeze both targets in place
+  c.dead = false; c.stolen = true;                 // stolen=true so nothing re-ejects drivers
+  c.driverMesh = null;
+  c.maxSpeed = 0; c.curSpeed = 0;
+  c.laneOffset = 0;                                // centre them on the bullet line
+});
+c1.pos.set(player.pos.x, 0, player.pos.z + 12);    // straight ahead of the crosshair
+c1.group.position.copy(c1.pos);
+c1.heading = Math.PI;
+c2.pos.set(player.pos.x, 0, player.pos.z + 16);    // 4 m behind c1 -> inside blast chain radius
+c2.group.position.copy(c2.pos);
+c2.heading = Math.PI;
+player.wanted = 0;
+const hpBeforeBoom = player.hp;
+check('target car alive before shooting', !c1.dead && (c1.shot || 0) === 0);
+// aim like a real player: park the crosshair on the road a bit past the car so
+// the bullet's descending path passes through the car's body/cabin
+function aimCrosshairAtGround(z) {
+  const cam = G.camera;
+  const rc = new THREE.Raycaster();
+  let bestNy = 0, bestErr = Infinity;
+  for (let ny = -0.95; ny <= 0.95; ny += 0.01) {
+    rc.setFromCamera(new THREE.Vector2(0, ny), cam);
+    if (rc.ray.direction.y >= -0.001) continue;
+    const t = -rc.ray.origin.y / rc.ray.direction.y;
+    const p = rc.ray.origin.clone().addScaledVector(rc.ray.direction, t);
+    if (Math.abs(p.x - player.pos.x) > 4) continue;
+    const err = Math.abs(p.z - z);
+    if (err < bestErr) { bestErr = err; bestNy = ny; }
+  }
+  handlers.mousemove({ clientX: 640, clientY: (1 - bestNy) / 2 * 720 });
+}
+aimCrosshairAtGround(player.pos.z + 22);
+handlers.mousedown({ button: 0 });
+step(45);                                          // 3+ AK shots at cd=0.10 s
+handlers.mouseup({ button: 0 });
+check('car exploded after ' + (c1.shot || 0) + ' bullets', c1.dead === true);
+check('wreck is charred black', c1.group.userData.body.material.color.getHex() === 0x181818);
+check('explosion raised the wanted level (' + player.wanted.toFixed(1) + ')', player.wanted > 0);
+check('hero standing 12 m away took NO blast damage', player.hp === hpBeforeBoom);
+check('nearby car caught the chain-reaction fuse', c2.fuseT !== undefined || c2.dead);
+step(120);                                         // let the fuse burn out
+check('chain reaction blew up the second car', c2.dead === true);
+check('dead wrecks removed from bullet targets', !G.hittables.includes(c1.group.userData.body));
 
 console.log(failures === 0 ? '\nALL SMOKE TESTS PASSED' : '\n' + failures + ' TEST(S) FAILED');
 process.exit(failures === 0 ? 0 : 1);

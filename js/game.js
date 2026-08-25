@@ -22,14 +22,22 @@
   const CELL = 35;                // block + road pitch
   const ROAD = 9;                 // road width
   const BLOCK = CELL - ROAD;      // buildable block width (26)
-  const N = 5;                    // blocks per side -> roads 0..N
-  const CITY = N * CELL;          // 175
-  const CENTER = CITY / 2;        // 87.5
+  const N = 9;                    // blocks per side -> roads 0..N  (GTA 1 style expanded map)
+  const CITY = N * CELL;          // 315
+  const CENTER = CITY / 2;        // 157.5
   const GROUND_HALF = CENTER + 22;
 
   const COLORS = {
     ground: 0x2c3138, road: 0x23272e, sidewalk: 0x777d86, grass: 0x2f4a2f,
-    line: 0xd8d8d8, building: [0x7a6a5a, 0x9a8571, 0x6f7f8f, 0x8a7f8a, 0x5f6a5f, 0x8a7266, 0x75838a, 0x7f6a7a]
+    line: 0xd8d8d8, water: 0x1d4257, bridge: 0x55585f, railing: 0x9aa0a8,
+    building: [0x7a6a5a, 0x9a8571, 0x6f7f8f, 0x8a7f8a, 0x5f6a5f, 0x8a7266, 0x75838a, 0x7f6a7a]
+  };
+  // GTA 1 style districts: each quarter of the city has its own palette
+  const DISTRICT_PALS = {
+    nw: [0x6f6a62, 0x7a6a58, 0x5f6560, 0x84766a],            // docklands / industrial
+    ne: [0x9a6a4f, 0xa8845f, 0x8f7a5a, 0xb09070],            // residential brick
+    sw: [0x8a7266, 0x75685a, 0x9a8571, 0x7f6a7a],            // old town
+    se: [0x6f7f8f, 0x5f7a8a, 0x77878f, 0x667a88]             // downtown glass
   };
 
   /* ---------------- Seeded RNG ---------------- */
@@ -46,6 +54,13 @@
 
   const cx = (i) => i * CELL - CENTER;   // x of vertical road i
   const cz = (j) => j * CELL - CENTER;   // z of horizontal road j
+
+  /* ---- River + bridges (GTA 1 style districts split by water) ---- */
+  const RIVER_ROAD = 5;                       // horizontal road row replaced by the river
+  const RIVER_HALF = 14;                      // water half-width
+  const RIVER_Z = cz(RIVER_ROAD);             // river centre line
+  function isInsideWater(x, z) { return Math.abs(z - RIVER_Z) < RIVER_HALF; }
+  const SPAWN = new THREE.Vector3(cx(4), 0, cz(4));   // safe road intersection
 
   /* ---------------- Audio (procedural) ---------------- */
   const Sfx = {
@@ -95,6 +110,8 @@
     },
     shoot() { this.noise(0.12, 0.5, 2600, true); this.tone(140, 0.09, 'square', 0.25, 50); },
     ak() { this.noise(0.1, 0.55, 2100, true); this.tone(110, 0.08, 'square', 0.24, 45); this.noise(0.04, 0.2, 4200); },
+    metalHit() { this.tone(1600 + Math.random() * 800, 0.05, 'square', 0.12, 600); this.noise(0.04, 0.16, 5200); },
+    boom() { this.noise(0.5, 0.85, 900, true); this.tone(60, 0.5, 'sawtooth', 0.35, 24); this.noise(0.22, 0.4, 2400, true); },
     punch() { this.tone(200, 0.07, 'square', 0.22, 90); this.noise(0.05, 0.15, 700); },
     knife() { this.noise(0.08, 0.2, 5200); this.tone(900, 0.06, 'sawtooth', 0.1, 300); },
     hit() { this.tone(90, 0.09, 'square', 0.28, 40); this.noise(0.06, 0.2, 500); },
@@ -210,9 +227,9 @@
 
     scene = new THREE.Scene();
     scene.background = new THREE.Color(0x0d0f13);
-    scene.fog = new THREE.Fog(0x0d0f13, 120, 320);
+    scene.fog = new THREE.Fog(0x0d0f13, 150, 420);
 
-    camera = new THREE.PerspectiveCamera(48, W / H, 0.1, 600);
+    camera = new THREE.PerspectiveCamera(48, W / H, 0.1, 800);
 
     scene.add(new THREE.AmbientLight(0xffffff, 0.85));
     const hemi = new THREE.HemisphereLight(0xdfe7ff, 0x3a2f24, 0.5);
@@ -268,8 +285,12 @@
   function addBuilding(minX, minZ, maxX, maxZ) {
     const w = maxX - minX, d = maxZ - minZ;
     if (w < 4 || d < 4) return;
-    const base = COLORS.building[(rng() * COLORS.building.length) | 0];
-    const h = 4 + Math.pow(rng(), 1.6) * 26;
+    // district palette (GTA 1 style quarters) + taller skyline downtown
+    const mx = (minX + maxX) / 2, mz = (minZ + maxZ) / 2;
+    const pal = DISTRICT_PALS[mz < RIVER_Z ? (mx < 0 ? 'nw' : 'ne') : (mx < 0 ? 'sw' : 'se')];
+    const base = pal[(rng() * pal.length) | 0];
+    let h = 4 + Math.pow(rng(), 1.6) * 26;
+    if (Math.abs(mx) < 70 && Math.abs(mz) < 70) h = Math.min(40, h * 1.6);   // downtown towers
     const tex = makeFacade(base, (minX * 13 + minZ * 7) | 0);
     const sideMat = new THREE.MeshLambertMaterial({ map: tex });
     const topMat = new THREE.MeshLambertMaterial({ color: 0x4a4d55 });
@@ -317,10 +338,18 @@
       }
     }
 
+    // ---- river splitting the city (GTA 1 style), crossed by bridges on every avenue ----
+    worldGroup.add(box(CITY + ROAD + 8, 0.12, RIVER_HALF * 2, COLORS.water, 0, 0.26, RIVER_Z));
+    // banks: grass strips along the water edge
+    worldGroup.add(box(CITY + ROAD + 8, 0.14, 2.5, COLORS.grass, 0, 0.27, RIVER_Z - RIVER_HALF - 1));
+    worldGroup.add(box(CITY + ROAD + 8, 0.14, 2.5, COLORS.grass, 0, 0.27, RIVER_Z + RIVER_HALF + 1));
+
     // blocks: sidewalk slab + buildings
     for (let bi = 0; bi < N; bi++) for (let bj = 0; bj < N; bj++) {
       const minX = cx(bi) + ROAD / 2, maxX = cx(bi + 1) - ROAD / 2;
       const minZ = cz(bj) + ROAD / 2, maxZ = cz(bj + 1) - ROAD / 2;
+      // no buildings inside the river
+      if (!(maxZ < RIVER_Z - RIVER_HALF || minZ > RIVER_Z + RIVER_HALF)) continue;
       worldGroup.add(plane(BLOCK, BLOCK, COLORS.sidewalk, (minX + maxX) / 2, 0.02, (minZ + maxZ) / 2));
 
       // simple lot layout
@@ -353,6 +382,18 @@
         }
       }
     }
+
+    // ---- bridges: every avenue crosses the river on a concrete deck ----
+    for (let i = 0; i <= N; i++) {
+      worldGroup.add(box(ROAD, 0.12, RIVER_HALF * 2 + 4, COLORS.bridge, cx(i), 0.36, RIVER_Z));
+      worldGroup.add(box(0.35, 0.8, RIVER_HALF * 2 + 4, COLORS.railing, cx(i) - ROAD / 2 + 0.25, 0.72, RIVER_Z));
+      worldGroup.add(box(0.35, 0.8, RIVER_HALF * 2 + 4, COLORS.railing, cx(i) + ROAD / 2 - 0.25, 0.72, RIVER_Z));
+      // lane markings across the deck
+      for (let s = RIVER_Z - RIVER_HALF + 3; s < RIVER_Z + RIVER_HALF - 3; s += 8) {
+        worldGroup.add(plane(0.28, 3.2, COLORS.line, cx(i), 0.43, s));
+      }
+    }
+
     scene.add(worldGroup);
     built = true;
   }
@@ -377,12 +418,19 @@
     function ring(a, b) {
       return [[cx(a), cz(a)], [cx(b), cz(a)], [cx(b), cz(b)], [cx(a), cz(b)]];
     }
+    // outer + inner rings, crossing the river over the bridges
     routes.push(ring(0, N));
     routes.push(ring(1, N - 1));
     routes.push(ring(2, N - 2));
-    // straight patrol loops (back & forth)
-    routes.push([[cx(2), cz(0)], [cx(2), cz(N)]]);
+    routes.push(ring(3, N - 3));
+    // straight patrol loops (back & forth) spread across the expanded map
+    routes.push([[cx(1), cz(0)], [cx(1), cz(N)]]);
+    routes.push([[cx(4), cz(0)], [cx(4), cz(N)]]);
+    routes.push([[cx(7), cz(0)], [cx(7), cz(N)]]);
     routes.push([[cx(0), cz(2)], [cx(N), cz(2)]]);
+    routes.push([[cx(0), cz(7)], [cx(N), cz(7)]]);
+    routes.push([[cx(0), cz(1)], [cx(N), cz(1)]]);
+    routes.push([[cx(0), cz(8)], [cx(N), cz(8)]]);
   }
 
   /* ---------------- Models ---------------- */
@@ -461,6 +509,7 @@
     g.add(blobShadow(1.1));
     g.userData.wheels = wheels;
     g.userData.body = body;
+    g.userData.cabin = cabin; g.userData.hood = hood; g.userData.trunk = trunk;
     return g;
   }
 
@@ -487,6 +536,7 @@
   const bloodParticles = [];
   const splats = [];
   const tracers = [];
+  const smokes = [];      // rising explosion/damage smoke puffs
   const corpses = [];
   const hittables = [];   // meshes raycast can hit (NPC bodies + cars)
 
@@ -522,7 +572,7 @@
     muzzle.position.set(0, 1.45, 0.42);
 
     return {
-      group: g, pos: new THREE.Vector3(0, 0, 6), vel: new THREE.Vector3(),
+      group: g, pos: SPAWN.clone(), vel: new THREE.Vector3(),
       hp: 100, maxHp: 100, weapon: 0,
       ammoStore: { 2: MAG_SIZE, 3: AK_MAG },   // per-weapon reserve
       shotsFired: 0,
@@ -554,7 +604,7 @@
       const minX = cx(bi) + ROAD / 2 + 1, maxX = cx(bi + 1) - ROAD / 2 - 1;
       const minZ = cz(bj) + ROAD / 2 + 1, maxZ = cz(bj + 1) - ROAD / 2 - 1;
       const x = minX + rng() * (maxX - minX), z = minZ + rng() * (maxZ - minZ);
-      if (!isInsideBuilding(x, z)) return new THREE.Vector3(x, 0, z);
+      if (!isInsideBuilding(x, z) && !isInsideWater(x, z)) return new THREE.Vector3(x, 0, z);
     }
     return new THREE.Vector3((rng() * 2 - 1) * CENTER, 0, (rng() * 2 - 1) * CENTER);
   }
@@ -566,7 +616,7 @@
     for (let t = 0; t < 20; t++) {
       const a = rng() * Math.PI * 2, d = 2 + rng() * r;
       const x = pos.x + Math.cos(a) * d, z = pos.z + Math.sin(a) * d;
-      if (!isInsideBuilding(x, z)) return new THREE.Vector3(x, 0, z);
+      if (!isInsideBuilding(x, z) && !isInsideWater(x, z)) return new THREE.Vector3(x, 0, z);
     }
     return pos.clone();
   }
@@ -618,9 +668,11 @@
     g.add(drv);
     car.driverMesh = drv;
     g.userData.owner = car;
-    g.userData.body.userData.owner = car;
+    [g.userData.body, g.userData.cabin, g.userData.hood, g.userData.trunk].forEach(m => {
+      m.userData.owner = car;
+      hittables.push(m);
+    });
     cars.push(car);
-    hittables.push(g.userData.body);
     return car;
   }
 
@@ -628,23 +680,23 @@
     if (spawned) return;
     buildRoutes();
     // civilians
-    for (let i = 0; i < 34; i++) makeNPC('civilian');
+    for (let i = 0; i < 48; i++) makeNPC('civilian');
     // police
-    for (let i = 0; i < 9; i++) makeNPC('police');
-    // traffic
-    for (let i = 0; i < 5; i++) makeCarEntity({ color: [0xc23a2e, 0x2e6fc2, 0x2e8f4a, 0xc2a02e, 0x7a3ac2][i] });
-    for (let i = 0; i < 4; i++) makeCarEntity({ isPolice: true, color: 0xe8e8e8, speed: 9.5 });
-    for (let i = 0; i < 6; i++) makeCarEntity({ color: [0x2e6fc2, 0x2e8f4a, 0xc2a02e, 0x4a4a52, 0x8a5a2e][(rng() * 5) | 0], speed: 6 + rng() * 3 });
+    for (let i = 0; i < 12; i++) makeNPC('police');
+    // traffic (bigger map -> more cars)
+    for (let i = 0; i < 7; i++) makeCarEntity({ color: [0xc23a2e, 0x2e6fc2, 0x2e8f4a, 0xc2a02e, 0x7a3ac2][i] });
+    for (let i = 0; i < 5; i++) makeCarEntity({ isPolice: true, color: 0xe8e8e8, speed: 9.5 });
+    for (let i = 0; i < 8; i++) makeCarEntity({ color: [0x2e6fc2, 0x2e8f4a, 0xc2a02e, 0x4a4a52, 0x8a5a2e][(rng() * 5) | 0], speed: 6 + rng() * 3 });
 
     spawned = true;
   }
 
   /* ---------------- Blood FX ---------------- */
-  function spawnBlood(pos, dir, amount) {
+  function spawnBlood(pos, dir, amount, color) {
     const n = Math.min(amount || 8, 26);
     for (let i = 0; i < n; i++) {
       const size = 0.06 + rng() * 0.12;
-      const p = new THREE.Mesh(new THREE.PlaneGeometry(size, size), new THREE.MeshBasicMaterial({ color: 0xb00a0a, transparent: true, opacity: 1, depthWrite: false }));
+      const p = new THREE.Mesh(new THREE.PlaneGeometry(size, size), new THREE.MeshBasicMaterial({ color: color || 0xb00a0a, transparent: true, opacity: 1, depthWrite: false }));
       p.position.set(pos.x + (rng() - 0.5) * 0.3, pos.y + 0.2 + rng() * 0.5, pos.z + (rng() - 0.5) * 0.3);
       const dirH = new THREE.Vector3(dir.x, 0, dir.z).normalize();
       const side = new THREE.Vector3(-dirH.z, 0, dirH.x);
@@ -662,6 +714,39 @@
     m.position.set(pos.x, 0.05 + rng() * 0.02, pos.z);
     scene.add(m);
     splats.push({ mesh: m, life: 18 + rng() * 12, t: 0 });
+  }
+  function spawnScorch(pos) {
+    if (splats.length > 80) { const old = splats.shift(); scene.remove(old.mesh); }
+    const r = 1.6 + rng() * 0.8;
+    const m = new THREE.Mesh(new THREE.CircleGeometry(r, 12), new THREE.MeshBasicMaterial({ color: 0x0b0b0b, transparent: true, opacity: 0.8, depthWrite: false }));
+    m.rotation.x = -Math.PI / 2;
+    m.position.set(pos.x, 0.06, pos.z);
+    scene.add(m);
+    splats.push({ mesh: m, life: 30, t: 0 });
+  }
+  // yellow sparks when bullets ricochet off metal
+  function spawnSparks(pos, dir) {
+    for (let i = 0; i < 6; i++) {
+      const size = 0.05 + rng() * 0.07;
+      const p = new THREE.Mesh(new THREE.PlaneGeometry(size, size), new THREE.MeshBasicMaterial({ color: i % 2 ? 0xffd66a : 0xfff2c8, transparent: true, opacity: 1, depthWrite: false }));
+      p.position.copy(pos);
+      const v = new THREE.Vector3((rng() - 0.5) * 5, 1 + rng() * 4, (rng() - 0.5) * 5).addScaledVector(dir, -2);
+      bloodParticles.push({ mesh: p, vel: v, life: 0.22 + rng() * 0.18, t: 0 });
+      scene.add(p);
+    }
+  }
+  // rising smoke puffs (explosions & damaged engines)
+  function spawnSmoke(pos, scale) {
+    if (smokes.length > 90) { const old = smokes.shift(); scene.remove(old.mesh); }
+    const s = scale || 1;
+    const m = new THREE.Mesh(new THREE.SphereGeometry(0.28 * s, 6, 6), new THREE.MeshBasicMaterial({ color: rng() < 0.3 ? 0x3a3a3a : 0x242424, transparent: true, opacity: 0.55, depthWrite: false }));
+    m.position.copy(pos);
+    scene.add(m);
+    smokes.push({
+      mesh: m,
+      vel: new THREE.Vector3((rng() - 0.5) * 0.7, 1.4 + rng() * 1.6, (rng() - 0.5) * 0.7),
+      grow: 1.1 + rng() * 1.2, life: 1.4 + rng() * 1.2, t: 0
+    });
   }
   function ejectShell(pos, dir) {
     const m = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.05, 0.12), new THREE.MeshBasicMaterial({ color: 0xd8a63a, transparent: true }));
@@ -785,11 +870,17 @@
     updateShotsHUD();
     floatText(String(getAmmo(player.weapon)), mouse.x + 18, mouse.y - 22, '#7df');
 
-    // direction: aim-assist onto NPCs first, otherwise free aim + small spread
+    // direction: aim-assist onto NPCs first, otherwise shoot toward the exact
+    // ground point under the crosshair — bullets strike cars/walls standing
+    // between muzzle and target instead of sailing over them
     const dir = new THREE.Vector3();
     const assist = findAssistTarget(muzzleW, a.dir, Math.min(w.range, ASSIST_RANGE));
     if (assist) dir.copy(assist).sub(muzzleW).normalize();
-    else dir.copy(a.dir).add(new THREE.Vector3(0, 0.12, 0));
+    else {
+      dir.copy(a.point).sub(muzzleW);
+      if (dir.lengthSq() < 0.02) dir.copy(a.dir).setY(-0.03);
+      dir.normalize();
+    }
     dir.x += (rng() - 0.5) * w.spread;
     dir.y += (rng() - 0.5) * w.spread * 0.6;
     dir.z += (rng() - 0.5) * w.spread;
@@ -819,10 +910,13 @@
         floatText(hitHead ? 'HEADSHOT!' : 'TRÚNG!', mouse.x + 18, mouse.y - 44, '#f66');
         hitMark();
       } else if (hitOwner.group && !hitOwner.dead) {
-        // car
-        spawnBlood(hitPoint, dir, 4);
+        // metal: sparks fly, the wreck smoulders and finally BLOWS UP
+        spawnSparks(hitPoint, dir);
+        Sfx.metalHit();
         hitOwner.shot = (hitOwner.shot || 0) + 1;
-        if (hitOwner.shot >= w.carHits) explodeCar(hitOwner);
+        const left = w.carHits - hitOwner.shot;
+        floatText(left > 0 ? 'XE HỎNG · còn ' + left : '💥 NỔ TUNG!', mouse.x + 18, mouse.y - 44, left > 0 ? '#fc6' : '#f80');
+        if (left <= 0) explodeCar(hitOwner);
       }
     } else {
       spawnSplat(hitPoint.clone().setY(0));
@@ -883,17 +977,71 @@
   function explodeCar(car) {
     if (car.dead) return;
     car.dead = true;
-    Sfx.shoot(); Sfx.die();
+    car.curSpeed = 0;
+    Sfx.boom();
     const p = car.pos.clone().setY(1);
-    for (let i = 0; i < 20; i++) spawnBlood(p, new THREE.Vector3(rng() - 0.5, 0, rng() - 0.5), 3);
-    const boom = new THREE.Mesh(new THREE.SphereGeometry(1.6, 8, 8), new THREE.MeshBasicMaterial({ color: 0xff7a2a, transparent: true, opacity: 0.9 }));
+
+    // fireball (outer orange + inner yellow core)
+    const boom = new THREE.Mesh(new THREE.SphereGeometry(1.5, 8, 8), new THREE.MeshBasicMaterial({ color: 0xff7a2a, transparent: true, opacity: 0.95 }));
     boom.position.copy(p);
     scene.add(boom);
-    tracers.push({ mesh: boom, life: 0.25, t: 0, grow: true });
-    // damage nearby NPCs
-    NPCs.forEach(n => { if (!n.dead && n.pos.distanceTo(car.pos) < 4) damageNPC(n, 50, n.pos.clone().setY(1.1), n.pos.clone().sub(car.pos)); });
-    if (player.pos.distanceTo(car.pos) < 4) playerTakeDamage(40, car.pos);
-    triggerCrime(2);
+    tracers.push({ mesh: boom, life: 0.5, t: 0, grow: true });
+    const core = new THREE.Mesh(new THREE.SphereGeometry(0.85, 8, 8), new THREE.MeshBasicMaterial({ color: 0xffe08a, transparent: true, opacity: 1 }));
+    core.position.copy(p);
+    scene.add(core);
+    tracers.push({ mesh: core, life: 0.32, t: 0, grow: true });
+
+    // debris + sparks flying out
+    for (let i = 0; i < 14; i++) spawnBlood(p, new THREE.Vector3(rng() - 0.5, 0, rng() - 0.5), 2, 0x333330);
+    for (let i = 0; i < 10; i++) spawnSparks(p, new THREE.Vector3(rng() - 0.5, 0, rng() - 0.5));
+    // smoke column
+    for (let i = 0; i < 9; i++) spawnSmoke(p.clone().add(new THREE.Vector3((rng() - 0.5) * 1.6, rng() * 1.2, (rng() - 0.5) * 1.6)), 0.9 + rng());
+    // scorched asphalt + charred wreck stays on the map
+    spawnScorch(car.pos);
+    const u = car.group.userData;
+    [u.body, u.cabin, u.hood, u.trunk].forEach(m => { if (m && m.material && m.material.color) m.material.color.setHex(0x181818); });
+    if (u.lightRed) { u.lightRed.visible = false; u.lightBlue.visible = false; }
+    if (car.driverMesh) { car.group.remove(car.driverMesh); car.driverMesh = null; }
+    car.group.rotation.z += (rng() - 0.5) * 0.22;
+    [u.body, u.cabin, u.hood, u.trunk].forEach(m => {
+      const hi = hittables.indexOf(m); if (hi >= 0) hittables.splice(hi, 1);
+    });
+
+    // blast damages pedestrians around the wreck
+    NPCs.forEach(n => {
+      if (n.dead) return;
+      const d = n.pos.distanceTo(car.pos);
+      if (d < 6) damageNPC(n, Math.max(20, 90 - d * 12), n.pos.clone().setY(1.1), n.pos.clone().sub(car.pos).normalize());
+    });
+
+    // hero caught in the blast
+    if (player.inCar === car || car.driver === player) {
+      // thrown clear of the exploding car
+      const c = car;
+      c.driver = null;
+      const side = new THREE.Vector3(Math.cos(c.heading), 0, -Math.sin(c.heading)).multiplyScalar(-2.4);
+      const ep = c.group.position.clone().add(side);
+      clampToWorld(ep);
+      player.pos.copy(ep);
+      player.group.position.copy(ep);
+      scene.add(player.group);
+      player.inCar = null;
+      updateHealthHUD();
+      playerTakeDamage(55, car.pos);
+      toast('XE NỔ TUNG! Bạn bắn ra ngoài kịp lúc...');
+    } else if (!player.inCar && !player.dead) {
+      const pd = player.pos.distanceTo(car.pos);
+      if (pd < 5.5) playerTakeDamage(Math.max(15, 60 - pd * 9), car.pos);
+    }
+
+    // CHAIN REACTION: nearby cars catch fire and pop shortly after
+    cars.forEach(o => {
+      if (o !== car && !o.dead && !o.driver && o.fuseT === undefined && o.group.position.distanceTo(car.group.position) < 5.5) {
+        o.fuseT = 0.35 + rng() * 0.65;
+      }
+    });
+
+    triggerCrime(1.5);
   }
 
   /* ---------------- AI: civilians ---------------- */
@@ -1070,6 +1218,24 @@
     if (car.dead) return;
     if (car.driver) return;   // player-driven
 
+    // burning fuse after a chain-reaction ignition
+    if (car.fuseT !== undefined) {
+      car.fuseT -= dt;
+      car.smokeT = (car.smokeT || 0) - dt;
+      if (car.smokeT <= 0) { car.smokeT = 0.09; spawnSmoke(car.pos.clone().setY(1.15), 0.9); }
+      if (car.fuseT <= 0) { explodeCar(car); return; }
+    } else if ((car.shot || 0) > 0) {
+      // damaged engine smoulders, warning the player it can blow
+      car.smokeT = (car.smokeT || 0) - dt;
+      if (car.smokeT <= 0) {
+        car.smokeT = 0.26;
+        spawnSmoke(new THREE.Vector3(
+          car.group.position.x + Math.sin(car.heading) * 1.4,
+          1.05,
+          car.group.position.z + Math.cos(car.heading) * 1.4), 0.55);
+      }
+    }
+
     const route = car.route;
     const wp = new THREE.Vector3(route[car.wpIndex][0], 0, route[car.wpIndex][1]);
     if (wp.clone().sub(car.pos).length() < 2.5) car.wpIndex = (car.wpIndex + 1) % route.length;
@@ -1145,6 +1311,10 @@
     const p = c.group.position.clone().addScaledVector(side, -2.2);
     p.y = 0;
     if (isInsideBuilding(p.x, p.z)) p.copy(c.group.position).addScaledVector(side, 2.2);
+    if (isInsideWater(p.x, p.z)) {   // on a bridge: shove him along the deck instead
+      p.copy(c.group.position).add(new THREE.Vector3(0, 0, c.heading > 0 ? -2.4 : 2.4));
+      if (isInsideWater(p.x, p.z)) p.z = RIVER_Z + (p.z >= RIVER_Z ? 1 : -1) * (RIVER_HALF + 1.5);
+    }
     clampToWorld(p);
     ped.pos.copy(p);
     ped.group.position.copy(p);
@@ -1391,6 +1561,15 @@
       s.t += dt;
       if (s.t > s.life) { scene.remove(s.mesh); splats.splice(i, 1); }
     }
+    for (let i = smokes.length - 1; i >= 0; i--) {
+      const s = smokes[i];
+      s.t += dt;
+      s.mesh.position.addScaledVector(s.vel, dt);
+      const sc = 1 + s.grow * dt;
+      s.mesh.scale.multiplyScalar(sc);
+      s.mesh.material.opacity = Math.max(0, 0.55 * (1 - s.t / s.life));
+      if (s.t >= s.life) { scene.remove(s.mesh); smokes.splice(i, 1); }
+    }
     for (let i = tracers.length - 1; i >= 0; i--) {
       const tr = tracers[i];
       tr.t += dt;
@@ -1472,7 +1651,7 @@
   }
   function respawn() {
     player.hp = player.maxHp; player.dead = false; player.wanted = 0; player.crimeTimer = 0;
-    player.pos.set(0, 0, 6); player.group.position.copy(player.pos);
+    player.pos.copy(SPAWN); player.group.position.copy(player.pos);
     player.group.rotation.set(0, 0, 0);
     if (player.inCar) { player.inCar.driver = null; player.inCar = null; }
     scene.add(player.group);
@@ -1495,6 +1674,14 @@
     for (let i = 0; i <= N; i++) {
       g.fillRect(W2(cx(i) - ROAD / 2), W2(-CITY / 2), ROAD * mScale, CITY * mScale);
       g.fillRect(W2(-CITY / 2), W2(cz(i) - ROAD / 2), CITY * mScale, ROAD * mScale);
+    }
+    // river over the roads...
+    g.fillStyle = '#17384f';
+    g.fillRect(W2(-CITY / 2), W2(RIVER_Z - RIVER_HALF), CITY * mScale, RIVER_HALF * 2 * mScale);
+    // ...then bridge stripes where avenues cross
+    g.fillStyle = '#3a4046';
+    for (let i = 0; i <= N; i++) {
+      g.fillRect(W2(cx(i) - ROAD / 2), W2(RIVER_Z - RIVER_HALF), ROAD * mScale, RIVER_HALF * 2 * mScale);
     }
   }
   function updateMinimap() {
@@ -1558,16 +1745,20 @@
   document.getElementById('startBtn').addEventListener('click', start);
   document.getElementById('respawnBtn').addEventListener('click', respawn);
 
-  // debug / testing hook (harmless in production)
-  window.__GTA__ = { get player() { return player; }, NPCs, cars, WEAPONS, hittables, get camera() { return camera; }, get scene() { return scene; } };
-
   // build world immediately so background is visible behind overlay
   buildCity();
   buildRoutes();
   spawnWorld();
   buildMinimapStatic();
   updateMinimap();
-  camera.position.set(0, 40, 30);
-  camera.lookAt(0, 0, 0);
+  camera.position.set(SPAWN.x, 40, SPAWN.z + 26);
+  camera.lookAt(SPAWN.x, 0, SPAWN.z);
   renderer.render(scene, camera);
+
+  // debug / testing hook (harmless in production)
+  window.__GTA__ = {
+    get player() { return player; }, NPCs, cars, WEAPONS, hittables,
+    get camera() { return camera; }, get scene() { return scene; },
+    N, RIVER_Z, RIVER_HALF, isInsideBuilding, isInsideWater
+  };
 })();
