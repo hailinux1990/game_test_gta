@@ -26,6 +26,8 @@ Người chuyển động	~48 người dân + ~12 cảnh sát tuần tra khắp 
 Vũ khí: tay / dao / súng / AK-47	1 đấm tay (12 dmg), 2 dao (34 dmg), 3 súng lục (26 dmg, headshot 60), 4 AK-47 (30 dmg, headshot 75, ~10 viên/s, 500 viên + R nạp đầy)
 AK-47 500 viên	Súng trường báng gỗ + băng đạn cong, 500 viên khởi đầu, tầm bắn 340 đơn vị, nổ xe chỉ sau 3 phát
 Chỉnh tâm khi bắn NPC	Aim-assist ±7° (tối đa 120m, không bám xuyên tường) vào dân/cảnh sát → gần như luôn trúng, ngắm chính giữa ăn HEADSHOT. Tầm đạn: súng lục 220, AK-47 340
+🆕 Nhân vật cầm vũ khí thật trên tay	Mỗi vũ khí là một mô hình 3D gắn vào BÀN TAY PHẢI của nhân vật chính, di chuyển theo từng cánh tay: ✊ nắm đấm da màu (đấm tay cũng thấy!), 🔪 dao lưỡi bạc + chuôi gỗ, 🔫 súng lục có báng nghiêng, 🔫 AK-47 nòng sắt + báng gỗ + băng đạn cong. Fix bug bản cũ: mesh vũ khí bị gắn sai vào gốc thân (nằm dưới chân)
+🆕 Icon HUD vũ khí đang cầm	Khung hiển thị góc trái dưới: icon lớn (✊ / 🔪 / 🔫) + tên vũ khí, đổi tức thì theo phím 1·2·3·4; các ô chọn vũ khí cũng thêm icon nhận diện nhanh
 
 Điều khiển
 WASD / mũi tên di chuyển · SHIFT chạy · Chuột ngắm (tự chỉnh tâm) · Click trái tấn công/bắn
@@ -37,4 +39,4 @@ Xe AI đâm người đi đường KHÔNG còn cộng sao oan (chỉ khi chính 
 Âm thanh thủ tục (WebAudio): súng, AK-47, đạn dội kim loại, TIẾNG NỔ BIG BOOM, CÒI HÚ CẢNH SÁT, đấm, chém, va chạm — không cần file ngoài
 Kiểm chứng
 Cú pháp JS hợp lệ (node --check)
-Smoke test headless 39/39 PASS (node tests/smoke.test.cjs): map 9×9 + sông/cầu/isInsideWater, spawn an toàn giữa giao lộ, 60 NPC + 20 xe đủ tài xế, AK-47 500 viên, aim-assist headshot/chest, xe phanh dừng 3.05m không hại player, giật xe có tài xế, BẮN 3 VIÊN AK → XE NỔ + xác cháy đen + NỔ DÂY CHUYỀN, và vòng đời TRUY ĐUỔI: có sao → xe cảnh sát chuyển pursuit → lao từ 30m áp sát DỪNG ở 7.6m → đúng 1 cảnh sát nhảy xuống đứng cạnh xe trong tầm bắn <16m → hết sao xe rút lui về traffic + cảnh sát hạ súng. Lưu ý: container không có GPU nên không chụp được ảnh render thật — mở link để xem trực tiếp.
+Smoke test headless 49/49 PASS (node tests/smoke.test.cjs): map 9×9 + sông/cầu/isInsideWater, spawn an toàn giữa giao lộ, 60 NPC + 20 xe đủ tài xế, AK-47 500 viên, aim-assist headshot/chest, xe phanh dừng 3.05m không hại player, giật xe có tài xế, BẮN 3 VIÊN AK → XE NỔ + xác cháy đen + NỔ DÂY CHUYỀN, vòng đời TRUY ĐUỔI (pursuit → dừng 7.6m → officer nhảy xuống trong tầm bắn → rút lui khi hết sao), và BIỂU TƯỢNG VŨ KHÍ: đủ 4 vũ khí mount đúng lên bàn tay phải (tên wp-fist/knife/gun/ak) + icon HUD ✊🔪🔫 khớp từng phím + mô hình AK ở độ cao tay 1.23m hướng ra phía trước. Lưu ý: container không có GPU nên không chụp được ảnh render thật — mở link để xem trực tiếp.

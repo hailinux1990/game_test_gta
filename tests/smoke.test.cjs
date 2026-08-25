@@ -279,5 +279,29 @@ const officerAfter = G.NPCs.find(n => n.type === 'police' && !n.dead &&
   n.pos.distanceTo(copCar.group.position) < 8);
 check('deployed officer holsters and stops chasing', !!officerAfter && officerAfter.state !== 'chase');
 
+/* ================= TEST 7: held-weapon models in hand + HUD icon ============== */
+const armR = G.player.group.userData.armR;
+function heldMount() {
+  return armR.children.find(ch => ch.name && ch.name.startsWith('wp-')) || null;
+}
+function selectAndCheck(digit, mountName, iconName, label) {
+  key(digit);
+  const m = heldMount();
+  check(label + ' model is mounted on the right hand', !!m && m.name === mountName);
+  check(label + ' HUD icon shows ' + iconName,
+    els.heldIcon.textContent === iconName && els.heldName.textContent === label);
+}
+selectAndCheck('Digit1', 'wp-fist', '✊', 'TAY');
+selectAndCheck('Digit2', 'wp-knife', '🔪', 'DAO');
+selectAndCheck('Digit3', 'wp-gun', '🔫', 'SÚNG');
+selectAndCheck('Digit4', 'wp-ak', '🔫', 'AK-47');
+step(2);   // refresh world matrices via the stubbed render
+const akMount = heldMount();
+const handPos = new THREE.Vector3().setFromMatrixPosition(akMount.matrixWorld);
+check('AK model sits at HAND height (' + handPos.y.toFixed(2) + ' m), not on the floor',
+  handPos.y > 0.9 && handPos.y < 1.9);
+check('AK muzzle points forward of the player',
+  Math.abs(handPos.x - player.pos.x) < 1.2 && handPos.z > player.pos.z - 1);
+
 console.log(failures === 0 ? '\nALL SMOKE TESTS PASSED' : '\n' + failures + ' TEST(S) FAILED');
 process.exit(failures === 0 ? 0 : 1);

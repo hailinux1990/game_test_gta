@@ -12,10 +12,10 @@
 
   /* ---- Weapon table ---- */
   const WEAPONS = [
-    { name: 'TAY',   kind: 'melee', dmg: 12, cd: 0.4,  range: 1.6 },
-    { name: 'DAO',   kind: 'melee', dmg: 34, cd: 0.4,  range: 1.9 },
-    { name: 'SÚNG',  kind: 'gun', dmg: 26, headDmg: 60, cd: 0.28, mag: MAG_SIZE, range: 220, spread: 0.035, carHits: 6, snd: 'shoot', tracer: 0xffe08a },
-    { name: 'AK-47', kind: 'gun', dmg: 30, headDmg: 75, cd: 0.10, mag: AK_MAG,   range: 340, spread: 0.012, carHits: 3, snd: 'ak',    tracer: 0xffc46a }
+    { name: 'TAY',   icon: '✊', kind: 'melee', dmg: 12, cd: 0.4,  range: 1.6 },
+    { name: 'DAO',   icon: '🔪', kind: 'melee', dmg: 34, cd: 0.4,  range: 1.9 },
+    { name: 'SÚNG',  icon: '🔫', kind: 'gun', dmg: 26, headDmg: 60, cd: 0.28, mag: MAG_SIZE, range: 220, spread: 0.035, carHits: 6, snd: 'shoot', tracer: 0xffe08a },
+    { name: 'AK-47', icon: '🔫', kind: 'gun', dmg: 30, headDmg: 75, cd: 0.10, mag: AK_MAG,   range: 340, spread: 0.012, carHits: 3, snd: 'ak',    tracer: 0xffc46a }
   ];
   const ASSIST_ANGLE = 0.12;      // rad (~7°) aim-assist cone onto NPCs
   const ASSIST_RANGE = 120;       // max distance for aim-assist
@@ -559,26 +559,64 @@
     const g = makeHuman({ shirt: 0xd63a2f, pants: 0x2b2f3a, cap: 0x111418 });
     scene.add(g);
 
-    // held weapon meshes (attached to right arm)
-    const knife = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.5, 0.08), new THREE.MeshLambertMaterial({ color: 0xd9d9d9 }));
-    knife.position.set(0.02, -0.1, 0.16);
-    const gun = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.16, 0.34), new THREE.MeshLambertMaterial({ color: 0x1c1c1c }));
-    gun.position.set(0.02, -0.02, 0.2);
+    // ---- held weapon models, all built along +Z then mounted on the RIGHT HAND ----
+    function handMount(model, name) {
+      const mount = new THREE.Group();
+      mount.rotation.x = Math.PI / 2;            // model +Z -> points along the forearm
+      mount.add(model);
+      mount.position.set(0.09, -0.56, 0.02);     // at the hand, right side of the body
+      mount.name = name;
+      return mount;
+    }
 
-    // AK-47: receiver + wooden stock + curved magazine
+    // FISTS: skin-coloured knuckles so bare-hand punching is visible too
+    const fist = new THREE.Group();
+    const knuckle = new THREE.Mesh(new THREE.BoxGeometry(0.17, 0.17, 0.18), mat(0xe8b88a));
+    knuckle.position.z = 0.1;
+    const wrist = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.14, 0.1), mat(0xd9a87a));
+    wrist.position.z = 0.02;
+    fist.add(knuckle, wrist);
+
+    // KNIFE: blade + guard + handle
+    const knife = new THREE.Group();
+    const kBlade = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.02, 0.42), mat(0xd9d9d9));
+    kBlade.position.z = 0.24;
+    const kGuard = new THREE.Mesh(new THREE.BoxGeometry(0.11, 0.05, 0.03), mat(0x3a2a1a));
+    kGuard.position.z = 0.03;
+    const kHandle = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.06, 0.15), mat(0x241c14));
+    kHandle.position.z = -0.06;
+    knife.add(kBlade, kGuard, kHandle);
+
+    // PISTOL: slide + barrel + grip
+    const gun = new THREE.Group();
+    const gBody = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.13, 0.26), mat(0x1c1c1c));
+    gBody.position.z = 0.1;
+    const gBarrel = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.06, 0.16), mat(0x101010));
+    gBarrel.position.set(0, 0.035, 0.29);
+    const gGrip = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.17, 0.09), mat(0x2a2a30));
+    gGrip.position.set(0, -0.12, -0.01);
+    gGrip.rotation.x = -0.25;
+    gun.add(gBody, gBarrel, gGrip);
+
+    // AK-47: receiver + barrel + wooden foregrip & stock + curved magazine
     const ak = new THREE.Group();
-    const akBody = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.14, 0.74), mat(0x2a2a2e));
-    const akBarrel = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.05, 0.3), mat(0x161616));
-    akBarrel.position.set(0, 0.03, 0.5);
-    const akWood = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.12, 0.32), mat(0x7a4a22));
-    akWood.position.set(0, -0.02, -0.3);
+    const akReceiver = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.14, 0.74), mat(0x2a2a2e));
+    const akBarrel = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.05, 0.34), mat(0x161616));
+    akBarrel.position.set(0, 0.03, 0.52);
+    const akForegrip = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.11, 0.26), mat(0x7a4a22));
+    akForegrip.position.set(0, -0.02, 0.3);
+    const akStock = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.13, 0.36), mat(0x7a4a22));
+    akStock.position.set(0, -0.03, -0.52);
     const akMag = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.24, 0.11), mat(0x1c1c1c));
-    akMag.position.set(0, -0.17, 0.08);
-    akMag.rotation.x = 0.4;
-    ak.add(akBody, akBarrel, akWood, akMag);
-    ak.position.set(0.02, -0.04, 0.28);
+    akMag.position.set(0, -0.16, 0.08);
+    akMag.rotation.x = -0.45;
+    ak.add(akReceiver, akBarrel, akForegrip, akStock, akMag);
 
-    g.userData.knife = knife; g.userData.gun = gun; g.userData.ak = ak;
+    g.userData.fist = handMount(fist, 'wp-fist');
+    g.userData.knife = handMount(knife, 'wp-knife');
+    g.userData.gun = handMount(gun, 'wp-gun');
+    g.userData.ak = handMount(ak, 'wp-ak');
+    g.userData.armR.add(g.userData.fist);        // default: bare fists on show
 
     const muzzle = new THREE.Group();
     muzzle.position.set(0, 1.45, 0.42);
@@ -600,13 +638,14 @@
   function setPlayerWeapon(w) {
     if (!player) return;
     player.weapon = w;
-    const g = player.group, u = g.userData;
-    g.remove(u.knife); g.remove(u.gun); g.remove(u.ak);
-    if (w === 1) g.add(u.knife);
-    else if (w === 2) g.add(u.gun);
-    else if (w === 3) g.add(u.ak);
+    const u = player.group.userData, armR = u.armR;
+    [u.knife, u.gun, u.ak, u.fist].forEach(m => armR.remove(m));
+    if (w === 1) armR.add(u.knife);          // 🔪 in the right hand
+    else if (w === 2) armR.add(u.gun);       // pistol in the right hand
+    else if (w === 3) armR.add(u.ak);        // rifle in the right hand
+    else armR.add(u.fist);                   // bare knuckles on show
     Sfx.click();
-    updateWeaponHUD();
+    updateWeaponHUD();                       // also refreshes the held-item icon
   }
 
   /* ---------------- NPC creation ---------------- */
@@ -1681,6 +1720,8 @@
   const wantedBox = document.getElementById('wantedBox');
   const ammoN = document.getElementById('ammoN');
   const shotsEl = document.getElementById('shotsN');
+  const heldIcon = document.getElementById('heldIcon');
+  const heldName = document.getElementById('heldName');
   const msgEl = document.getElementById('msg');
   const flashEl = document.getElementById('flash');
   const crosshair = document.getElementById('crosshair');
@@ -1698,6 +1739,11 @@
   }
   function updateWeaponHUD() {
     document.querySelectorAll('.wslot').forEach(el => el.classList.toggle('active', +el.dataset.w === player.weapon));
+    const w = WEAPONS[player.weapon];
+    if (w && heldIcon) {
+      heldIcon.textContent = w.icon;       // big glyph of the item in hand
+      heldName.textContent = w.name;
+    }
     updateAmmoHUD();
   }
   function updateAmmoHUD() {
