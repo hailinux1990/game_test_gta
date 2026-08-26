@@ -9,26 +9,7 @@ lib/three.min.js — engine Three.js r128 (bản local)
 tests/smoke.test.cjs — smoke test headless (Node, không cần GPU): `node tests/smoke.test.cjs`
 Các tính năng theo đúng yêu cầu
 
-Yêu cầu	Đã làm
-Thế giới 3D pixel	🆕 SIÊU BẢN ĐỒ MỞ RỘNG 11×11 block (~484×484 đơn vị, gấp ~5,7 lần bản đầu): đường nhựa, vạch kẻ, vỉa hè, tòa nhà mặt tiền cửa sổ pixel, cây cối. Render độ phân giải thấp + upscale pixelated
-🏙️ NHIỀU THÀNH PHỐ + nhà cao tầng kiểu Đông Anh	4 THÀNH PHỐ/TRUNG TÂM riêng biệt rải khắp map: trung tâm bắc sông, khu đô thị mới đông bắc, phố cổ tây nam, thành phố nam sông. Mỗi thành phố là một CỤM CHÙM NHÀ CAO TẦNG đan xen như huyện Đông Anh — càng vào lõi càng cao (tối đa ~56m), nhà tháp mặt kính xanh có trạm bơm mái + ăng-ten; giữa các thành phố là vùng ngoại ô thấp
-🆕 FIX bị tòa nhà che khuất	Tòa nhà cao đứng giữa camera và nhân vật sẽ TỰ ĐỘNG MỜ DẦN thành kính trong suốt (opacity ~0.15) rồi hiện lại đặc khi hết chắn — áp dụng cho CẢ nhân vật chính LẬN người dân đang đi lại trong bán kính 45m → luôn nhìn thấy nhân vật và đường đi, lái xe/đi bộ trong lòng phố cao tầng không lo mất dấu
-🆕 Bản đồ lớn qua SÔNG + CẦU	Dòng sông cắt ngang chia 2 miền bắc – nam; MỌI đại lộ đều có cầu bê tông lan can + vạch kẻ. Minimap vẽ sông xanh + sọc cầu
-Xe cộ di chuyển	26 xe (dân + xe cảnh sát đèn nháy) tự lái trên bản đồ multi-city, đúng làn, rẽ ngã tư, qua cầu. Nhân vật chính lên/xuống và lái xe (phím E)
-🚗💥 Bắn xe nổ tung	Bắn trúng xe: TIA LỬA KÍN KÉT + tiếng kim loại + khói động cơ bốc lên từ xe hỏng, HUD hiện "còn X phát". Đủ số phát → NỔ TUNG: cầu lửa cam + lõi vàng, mảnh văng, cột khói bốc lên, vết cháy đen trên mặt đường, xác xe CHÁY ĐEN nghiêng nằm lại hiện trường
-🚨 Xe cảnh sát TRUY ĐUỔI	Khi có sao truy nã: MỌI ô tô cảnh sát chuyển sang chế độ TRUY ĐUỔI — rượt thẳng người chơi tốc độ 13 (nhanh hơn xe thường), đèn nháy + CÒI HÚ, né chướng ngại vật khi lao qua các block. Hết sao → tự động rút lui về tuần tra bình thường
-👮 Áp sát + cảnh sát nhảy xuống bắn	Xe cảnh sát áp sát đến ~11m thì PHANH NÓT DỪNG LẠI, mở cửa và một cảnh sát NHẢY XUỐNG XE (luân phiên 2 bên cửa), lập tức đuổi theo + BẮN người chơi trong tầm 16m (có kiểm tra tầm nhìn). Chạy thoát xa (>16m) thì xe tiếp tục truy đuổi và có thể triển khai cảnh sát lần nữa
-🆕 Sát thương vụ nổ & NỔ DÂY CHUYỀN	Vụ nổ sát thương mọi NPC trong bán kính 6m (giảm theo khoảng cách) và cả người chơi nếu đứng gần; đang lái xe nổ thì bị văng ra ngoài kịp thời. Xe khác đỗ/đi trong bán kính 5.5m bắt lửa theo sau 0.35–1s → HIỆU ỨNG NỔ DÂY CHUYỀN
-🆕 Fix đạn xuyên không (bản gốc)	Bản cũ đạn free-aim bị đẩy lên +0.12 nên bay VƯỢT QUA ĐẦU xe — xe gần như không thể trúng. Giờ đạn bay đúng về điểm mặt đất dưới tâm ngắm → đặt chuột lên xe là TRÚNG. Hitbox xe gồm đủ thân + cabin + capo + cốp
-Trộm xe ô tô có người lái	Mỗi xe AI đều có tài xế ngồi trong cabin. Nhấn E gần xe đang có người → GIẬT XE: tài xế bị đẩy ra bỏ chạy (tài xế cảnh sát quay lại truy đuổi!), sao truy nã tăng (+1.2 dân / +2.2 cảnh sát). Xe đã stolen vào lại thoải mái
-Chạm xe không chết + xe tự dừng	Người chơi KHÔNG BAO GIỜ bị xe cán chết. Xe AI tự phanh gấp và DỪNG LẠI khi người chơi đứng trước (~4.5m), hết đường thì chạy tiếp. Xe chỉ cán được NPC
-Người chuyển động	~58 người dân + ~14 cảnh sát tuần tra khắp các thành phố (BFS tìm đường trên lưới đường + cầu, không xuyên nhà, không rơi xuống sông)
-Đánh NPC dân + cảnh sát, chảy máu	Hệ máu hạt + vệt máu loang trên nền, NPC chết ngã xuống rồi biến mất
-Vũ khí: tay / dao / súng / AK-47	1 đấm tay (12 dmg), 2 dao (34 dmg), 3 súng lục (26 dmg, headshot 60), 4 AK-47 (30 dmg, headshot 75, ~10 viên/s, 500 viên + R nạp đầy)
-AK-47 500 viên	Súng trường báng gỗ + băng đạn cong, 500 viên khởi đầu, tầm bắn 340 đơn vị, nổ xe chỉ sau 3 phát
-Chỉnh tâm khi bắn NPC	Aim-assist ±7° (tối đa 120m, không bám xuyên tường) vào dân/cảnh sát → gần như luôn trúng, ngắm chính giữa ăn HEADSHOT. Tầm đạn: súng lục 220, AK-47 340
-🆕 Nhân vật cầm vũ khí thật trên tay	Mỗi vũ khí là một mô hình 3D gắn vào BÀN TAY PHẢI của nhân vật chính, di chuyển theo từng cánh tay: ✊ nắm đấm da màu (đấm tay cũng thấy!), 🔪 dao lưỡi bạc + chuôi gỗ, 🔫 súng lục có báng nghiêng, 🔫 AK-47 nòng sắt + báng gỗ + băng đạn cong. Fix bug bản cũ: mesh vũ khí bị gắn sai vào gốc thân (nằm dưới chân)
-🆕 Icon HUD vũ khí đang cầm	Khung hiển thị góc trái dưới: icon lớn (✊ / 🔪 / 🔫) + tên vũ khí, đổi tức thì theo phím 1·2·3·4; các ô chọn vũ khí cũng thêm icon nhận diện nhanh
+
 
 Điều khiển
 WASD / mũi tên di chuyển · SHIFT chạy · Chuột ngắm (tự chỉnh tâm) · Click trái tấn công/bắn
