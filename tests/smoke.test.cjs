@@ -100,15 +100,15 @@ step(170);           // let the chase-cam converge: screen-centre aim == straigh
 
 const player = G.player;
 
-/* ================= TEST 0: expanded GTA1-style map ================= */
+/* ================= TEST 0: multi-city mega map ================= */
 check('game started, player exists', !!player);
-check('map expanded to N=' + G.N + ' blocks per side (GTA 1 style)', G.N === 9);
+check('map expanded to N=' + G.N + ' blocks per side (multi-city map)', G.N === 11);
 check('river runs through the city', Math.abs(G.RIVER_Z) > 0 && G.RIVER_HALF === 14);
 check('water detection works', G.isInsideWater(0, G.RIVER_Z) && !G.isInsideWater(0, G.RIVER_Z - 30));
 check('player spawns on open ground (no building/water)',
   !G.isInsideBuilding(player.pos.x, player.pos.z) && !G.isInsideWater(player.pos.x, player.pos.z));
 check('world spawned: NPCs=' + G.NPCs.length + ' cars=' + G.cars.length,
-  G.NPCs.length === 60 && G.cars.length === 20);
+  G.NPCs.length === 72 && G.cars.length === 26);
 check('every AI car has a visible driver mesh', G.cars.every(c => c.driverMesh !== null));
 
 /* ================= TEST 1: AK-47 with 500 rounds ================= */
@@ -302,6 +302,32 @@ check('AK model sits at HAND height (' + handPos.y.toFixed(2) + ' m), not on the
   handPos.y > 0.9 && handPos.y < 1.9);
 check('AK muzzle points forward of the player',
   Math.abs(handPos.x - player.pos.x) < 1.2 && handPos.z > player.pos.z - 1);
+
+/* ================= TEST 8: multi-city high-rise cores (Đông Anh style) ========= */
+check('map contains multiple city cores (' + G.CITY_CORES.length + ')', G.CITY_CORES.length >= 4);
+let maxH = 0, towers = 0;
+for (const b of G.buildingBoxes) { if (b.h > maxH) maxH = b.h; if (b.h >= 25) towers++; }
+check('skyline has real skyscrapers (max height ' + maxH.toFixed(1) + ' m)', maxH >= 40);
+check('dense high-rise clusters generated (' + towers + ' towers >= 25 m)', towers >= 10);
+
+/* ================= TEST 9: see-through occlusion fix =========================== */
+let tall = null;
+for (const b of G.buildingBoxes) if (!tall || b.h > tall.h) tall = b;
+// stand right at the north face of the tallest tower: camera looks over it,
+// so it must fade to glass instead of hiding the hero
+player.pos.set(tall.cx, 0, tall.minZ - 1.5);
+while (G.isInsideBuilding(player.pos.x, player.pos.z)) player.pos.z -= 2;
+player.group.position.copy(player.pos);
+step(70);
+check('tower between camera and hero fades see-through (fade=' + tall.fade.toFixed(2) + ')',
+  tall.fade < 0.5);
+// walk far north away from it -> building turns solid again
+player.pos.set(tall.cx, 0, tall.minZ - 90);
+while (G.isInsideBuilding(player.pos.x, player.pos.z)) player.pos.z -= 2;
+player.group.position.copy(player.pos);
+step(90);
+check('building turns solid again once the path is clear (fade=' + tall.fade.toFixed(2) + ')',
+  tall.fade > 0.85);
 
 console.log(failures === 0 ? '\nALL SMOKE TESTS PASSED' : '\n' + failures + ' TEST(S) FAILED');
 process.exit(failures === 0 ? 0 : 1);

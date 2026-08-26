@@ -10,10 +10,11 @@ tests/smoke.test.cjs — smoke test headless (Node, không cần GPU): `node tes
 Các tính năng theo đúng yêu cầu
 
 Yêu cầu	Đã làm
-Thế giới 3D pixel	🆕 Thành phố MỞ RỘNG 9×9 block kiểu GTA 1 (gấp 3,2 lần diện tích cũ): đường nhựa, vạch kẻ, vỉa hè, tòa nhà mặt tiền cửa sổ pixel, cây cối. Render độ phân giải thấp + upscale pixelated
-🆕 Bản đồ lớn qua SÔNG + CẦU	Dòng sông cắt ngang thành phố chia 2 miền bắc – nam; MỌI đại lộ đều có cầu bê tông lan can + vạch kẻ để xe cộ và người đi lại. Minimap vẽ sông màu xanh + sọc cầu
-🆕 4 khu vực phong cách GTA 1	Cảng/khu công nghiệp (tây bắc), khu dân cư gạch đỏ (đông bắc), phố cổ (tây nam), trung tâm kính xanh (đông nam) — mỗi khu một bảng màu riêng; nhà mặt tiền trung tâm cao gấp 1,6 lần tạo skyline
-Xe cộ di chuyển	20 xe (dân + xe cảnh sát có đèn nháy) tự lái theo tuyến đường trên bản đồ mở rộng, đi đúng làn, rẽ ở ngã tư, qua cầu. Nhân vật chính lên/xuống và lái xe (phím E)
+Thế giới 3D pixel	🆕 SIÊU BẢN ĐỒ MỞ RỘNG 11×11 block (~484×484 đơn vị, gấp ~5,7 lần bản đầu): đường nhựa, vạch kẻ, vỉa hè, tòa nhà mặt tiền cửa sổ pixel, cây cối. Render độ phân giải thấp + upscale pixelated
+🏙️ NHIỀU THÀNH PHỐ + nhà cao tầng kiểu Đông Anh	4 THÀNH PHỐ/TRUNG TÂM riêng biệt rải khắp map: trung tâm bắc sông, khu đô thị mới đông bắc, phố cổ tây nam, thành phố nam sông. Mỗi thành phố là một CỤM CHÙM NHÀ CAO TẦNG đan xen như huyện Đông Anh — càng vào lõi càng cao (tối đa ~56m), nhà tháp mặt kính xanh có trạm bơm mái + ăng-ten; giữa các thành phố là vùng ngoại ô thấp
+🆕 FIX bị tòa nhà che khuất	Tòa nhà cao đứng giữa camera và nhân vật sẽ TỰ ĐỘNG MỜ DẦN thành kính trong suốt (opacity ~0.15) rồi hiện lại đặc khi hết chắn — áp dụng cho CẢ nhân vật chính LẬN người dân đang đi lại trong bán kính 45m → luôn nhìn thấy nhân vật và đường đi, lái xe/đi bộ trong lòng phố cao tầng không lo mất dấu
+🆕 Bản đồ lớn qua SÔNG + CẦU	Dòng sông cắt ngang chia 2 miền bắc – nam; MỌI đại lộ đều có cầu bê tông lan can + vạch kẻ. Minimap vẽ sông xanh + sọc cầu
+Xe cộ di chuyển	26 xe (dân + xe cảnh sát đèn nháy) tự lái trên bản đồ multi-city, đúng làn, rẽ ngã tư, qua cầu. Nhân vật chính lên/xuống và lái xe (phím E)
 🚗💥 Bắn xe nổ tung	Bắn trúng xe: TIA LỬA KÍN KÉT + tiếng kim loại + khói động cơ bốc lên từ xe hỏng, HUD hiện "còn X phát". Đủ số phát → NỔ TUNG: cầu lửa cam + lõi vàng, mảnh văng, cột khói bốc lên, vết cháy đen trên mặt đường, xác xe CHÁY ĐEN nghiêng nằm lại hiện trường
 🚨 Xe cảnh sát TRUY ĐUỔI	Khi có sao truy nã: MỌI ô tô cảnh sát chuyển sang chế độ TRUY ĐUỔI — rượt thẳng người chơi tốc độ 13 (nhanh hơn xe thường), đèn nháy + CÒI HÚ, né chướng ngại vật khi lao qua các block. Hết sao → tự động rút lui về tuần tra bình thường
 👮 Áp sát + cảnh sát nhảy xuống bắn	Xe cảnh sát áp sát đến ~11m thì PHANH NÓT DỪNG LẠI, mở cửa và một cảnh sát NHẢY XUỐNG XE (luân phiên 2 bên cửa), lập tức đuổi theo + BẮN người chơi trong tầm 16m (có kiểm tra tầm nhìn). Chạy thoát xa (>16m) thì xe tiếp tục truy đuổi và có thể triển khai cảnh sát lần nữa
@@ -21,7 +22,7 @@ Xe cộ di chuyển	20 xe (dân + xe cảnh sát có đèn nháy) tự lái theo
 🆕 Fix đạn xuyên không (bản gốc)	Bản cũ đạn free-aim bị đẩy lên +0.12 nên bay VƯỢT QUA ĐẦU xe — xe gần như không thể trúng. Giờ đạn bay đúng về điểm mặt đất dưới tâm ngắm → đặt chuột lên xe là TRÚNG. Hitbox xe gồm đủ thân + cabin + capo + cốp
 Trộm xe ô tô có người lái	Mỗi xe AI đều có tài xế ngồi trong cabin. Nhấn E gần xe đang có người → GIẬT XE: tài xế bị đẩy ra bỏ chạy (tài xế cảnh sát quay lại truy đuổi!), sao truy nã tăng (+1.2 dân / +2.2 cảnh sát). Xe đã stolen vào lại thoải mái
 Chạm xe không chết + xe tự dừng	Người chơi KHÔNG BAO GIỜ bị xe cán chết. Xe AI tự phanh gấp và DỪNG LẠI khi người chơi đứng trước (~4.5m), hết đường thì chạy tiếp. Xe chỉ cán được NPC
-Người chuyển động	~48 người dân + ~12 cảnh sát tuần tra khắp bản đồ mở rộng (BFS tìm đường trên lưới đường + cầu, không xuyên nhà, không rơi xuống sông)
+Người chuyển động	~58 người dân + ~14 cảnh sát tuần tra khắp các thành phố (BFS tìm đường trên lưới đường + cầu, không xuyên nhà, không rơi xuống sông)
 Đánh NPC dân + cảnh sát, chảy máu	Hệ máu hạt + vệt máu loang trên nền, NPC chết ngã xuống rồi biến mất
 Vũ khí: tay / dao / súng / AK-47	1 đấm tay (12 dmg), 2 dao (34 dmg), 3 súng lục (26 dmg, headshot 60), 4 AK-47 (30 dmg, headshot 75, ~10 viên/s, 500 viên + R nạp đầy)
 AK-47 500 viên	Súng trường báng gỗ + băng đạn cong, 500 viên khởi đầu, tầm bắn 340 đơn vị, nổ xe chỉ sau 3 phát
@@ -39,4 +40,4 @@ Xe AI đâm người đi đường KHÔNG còn cộng sao oan (chỉ khi chính 
 Âm thanh thủ tục (WebAudio): súng, AK-47, đạn dội kim loại, TIẾNG NỔ BIG BOOM, CÒI HÚ CẢNH SÁT, đấm, chém, va chạm — không cần file ngoài
 Kiểm chứng
 Cú pháp JS hợp lệ (node --check)
-Smoke test headless 49/49 PASS (node tests/smoke.test.cjs): map 9×9 + sông/cầu/isInsideWater, spawn an toàn giữa giao lộ, 60 NPC + 20 xe đủ tài xế, AK-47 500 viên, aim-assist headshot/chest, xe phanh dừng 3.05m không hại player, giật xe có tài xế, BẮN 3 VIÊN AK → XE NỔ + xác cháy đen + NỔ DÂY CHUYỀN, vòng đời TRUY ĐUỔI (pursuit → dừng 7.6m → officer nhảy xuống trong tầm bắn → rút lui khi hết sao), và BIỂU TƯỢNG VŨ KHÍ: đủ 4 vũ khí mount đúng lên bàn tay phải (tên wp-fist/knife/gun/ak) + icon HUD ✊🔪🔫 khớp từng phím + mô hình AK ở độ cao tay 1.23m hướng ra phía trước. Lưu ý: container không có GPU nên không chụp được ảnh render thật — mở link để xem trực tiếp.
+Smoke test headless 54/54 PASS (node tests/smoke.test.cjs): map 11×11 multi-city + 4 cụm thành phố cao tầng (73 tháp ≥25m, cao nhất ~56m) + sông/cầu, spawn an toàn, 72 NPC + 26 xe đủ tài xế, AK-47 500 viên, aim-assist headshot/chest, xe phanh dừng không hại player, giật xe có tài xế, BẮN 3 VIÊN AK → XE NỔ + NỔ DÂY CHUYỀN, vòng đời TRUY ĐUỔI cảnh sát đầy đủ, BIỂU TƯỢNG vũ khí trên tay + HUD icon, và FIX CHE KHUẤT: tòa nhà chắn tầm nhìn mờ trong suốt (fade 0.16) khi đứng sau lưng nó → hiện lại đặc (0.99) khi đi xa. Lưu ý: container không có GPU nên không chụp được ảnh render thật — mở link để xem trực tiếp.

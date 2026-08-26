@@ -22,9 +22,9 @@
   const CELL = 35;                // block + road pitch
   const ROAD = 9;                 // road width
   const BLOCK = CELL - ROAD;      // buildable block width (26)
-  const N = 9;                    // blocks per side -> roads 0..N  (GTA 1 style expanded map)
-  const CITY = N * CELL;          // 315
-  const CENTER = CITY / 2;        // 157.5
+  const N = 11;                   // blocks per side -> roads 0..N  (multi-city mega map)
+  const CITY = N * CELL;          // 385
+  const CENTER = CITY / 2;        // 192.5
   const GROUND_HALF = CENTER + 22;
 
   const COLORS = {
@@ -39,6 +39,14 @@
     sw: [0x8a7266, 0x75685a, 0x9a8571, 0x7f6a7a],            // old town
     se: [0x6f7f8f, 0x5f7a8a, 0x77878f, 0x667a88]             // downtown glass
   };
+  // multi-city map (Đông Anh style): each core spawns a dense cluster of
+  // high-rise towers — the deeper inside the core, the taller the towers
+  const CITY_CORES = [
+    { x: -70, z: -75, r: 58 },     // trung tâm phía bắc sông
+    { x: 118, z: -125, r: 62 },    // khu đô thị mới đông bắc
+    { x: -128, z: 105, r: 52 },    // phố cổ tây nam
+    { x: 112, z: 112, r: 60 }      // thành phố phía nam sông
+  ];
 
   /* ---------------- Seeded RNG ---------------- */
   function mulberry32(seed) {
@@ -56,7 +64,7 @@
   const cz = (j) => j * CELL - CENTER;   // z of horizontal road j
 
   /* ---- River + bridges (GTA 1 style districts split by water) ---- */
-  const RIVER_ROAD = 5;                       // horizontal road row replaced by the river
+  const RIVER_ROAD = 6;                       // horizontal road row replaced by the river
   const RIVER_HALF = 14;                      // water half-width
   const RIVER_Z = cz(RIVER_ROAD);             // river centre line
   function isInsideWater(x, z) { return Math.abs(z - RIVER_Z) < RIVER_HALF; }
@@ -239,7 +247,7 @@
 
     scene = new THREE.Scene();
     scene.background = new THREE.Color(0x0d0f13);
-    scene.fog = new THREE.Fog(0x0d0f13, 150, 420);
+    scene.fog = new THREE.Fog(0x0d0f13, 150, 480);
 
     camera = new THREE.PerspectiveCamera(48, W / H, 0.1, 800);
 
@@ -297,21 +305,44 @@
   function addBuilding(minX, minZ, maxX, maxZ) {
     const w = maxX - minX, d = maxZ - minZ;
     if (w < 4 || d < 4) return;
-    // district palette (GTA 1 style quarters) + taller skyline downtown
     const mx = (minX + maxX) / 2, mz = (minZ + maxZ) / 2;
-    const pal = DISTRICT_PALS[mz < RIVER_Z ? (mx < 0 ? 'nw' : 'ne') : (mx < 0 ? 'sw' : 'se')];
-    const base = pal[(rng() * pal.length) | 0];
+
+    // district palette (GTA 1 style quarters)...
+    let pal = DISTRICT_PALS[mz < RIVER_Z ? (mx < 0 ? 'nw' : 'ne') : (mx < 0 ? 'sw' : 'se')];
     let h = 4 + Math.pow(rng(), 1.6) * 26;
-    if (Math.abs(mx) < 70 && Math.abs(mz) < 70) h = Math.min(40, h * 1.6);   // downtown towers
-    const tex = makeFacade(base, (minX * 13 + minZ * 7) | 0);
-    const sideMat = new THREE.MeshLambertMaterial({ map: tex });
-    const topMat = new THREE.MeshLambertMaterial({ color: 0x4a4d55 });
+
+    // ...plus CITY CORES: dense high-rise clusters (Đông Anh style towers).
+    // The deeper inside a core, the taller the tower — up to ~64 units.
+    let coreBoost = 0;
+    for (const c of CITY_CORES) {
+      const dist = Math.hypot(mx - c.x, mz - c.z);
+      if (dist < c.r) coreBoost = Math.max(coreBoost, 1 - dist / c.r);
+    }
+    if (coreBoost > 0) {
+      h = 20 + coreBoost * 36 + rng() * 8;                 // tower zone
+      if (h > 30) pal = DISTRICT_PALS.se;                  // glassy facades for skyscrapers
+    }
+
+    const tex = makeFacade(pal[(rng() * pal.length) | 0], (minX * 13 + minZ * 7) | 0);
+    const sideMat = new THREE.MeshLambertMaterial({ map: tex, transparent: true });
+    const topMat = new THREE.MeshLambertMaterial({ color: 0x4a4d55, transparent: true });
     const mats = [sideMat, sideMat, topMat, topMat, sideMat, sideMat];
     const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mats);
     m.position.set((minX + maxX) / 2, 0.02 + h / 2, (minZ + maxZ) / 2);
     worldGroup.add(m);
     buildingMeshes.push(m);
-    buildingBoxes.push({ minX, maxX, minZ, maxZ });
+
+    // rooftop detail for tall towers
+    if (h > 30) {
+      worldGroup.add(box(Math.min(4, w * 0.35), 1.6, Math.min(4, d * 0.35), 0x3c4046, mx, 0.02 + h + 0.8, mz));
+      worldGroup.add(box(0.3, 3.5 + rng() * 2.5, 0.3, 0x2b2e33, mx + w * 0.25, 0.02 + h + 2, mz - d * 0.2));
+    }
+
+    buildingBoxes.push({
+      minX, maxX, minZ, maxZ, h,
+      cx: (minX + maxX) / 2, cz: (minZ + maxZ) / 2,
+      mats: [sideMat, topMat], fade: 1, lastOp: 1
+    });
   }
 
   function addTree(x, z) {
@@ -435,14 +466,15 @@
     routes.push(ring(1, N - 1));
     routes.push(ring(2, N - 2));
     routes.push(ring(3, N - 3));
-    // straight patrol loops (back & forth) spread across the expanded map
+    // straight patrol loops (back & forth) spread across the multi-city map
     routes.push([[cx(1), cz(0)], [cx(1), cz(N)]]);
     routes.push([[cx(4), cz(0)], [cx(4), cz(N)]]);
     routes.push([[cx(7), cz(0)], [cx(7), cz(N)]]);
+    routes.push([[cx(9), cz(0)], [cx(9), cz(N)]]);
     routes.push([[cx(0), cz(2)], [cx(N), cz(2)]]);
-    routes.push([[cx(0), cz(7)], [cx(N), cz(7)]]);
-    routes.push([[cx(0), cz(1)], [cx(N), cz(1)]]);
+    routes.push([[cx(0), cz(4)], [cx(N), cz(4)]]);
     routes.push([[cx(0), cz(8)], [cx(N), cz(8)]]);
+    routes.push([[cx(0), cz(10)], [cx(N), cz(10)]]);
   }
 
   /* ---------------- Models ---------------- */
@@ -732,13 +764,14 @@
     if (spawned) return;
     buildRoutes();
     // civilians
-    for (let i = 0; i < 48; i++) makeNPC('civilian');
+    for (let i = 0; i < 58; i++) makeNPC('civilian');
     // police
-    for (let i = 0; i < 12; i++) makeNPC('police');
-    // traffic (bigger map -> more cars)
-    for (let i = 0; i < 7; i++) makeCarEntity({ color: [0xc23a2e, 0x2e6fc2, 0x2e8f4a, 0xc2a02e, 0x7a3ac2][i] });
-    for (let i = 0; i < 5; i++) makeCarEntity({ isPolice: true, color: 0xe8e8e8, speed: 9.5 });
-    for (let i = 0; i < 8; i++) makeCarEntity({ color: [0x2e6fc2, 0x2e8f4a, 0xc2a02e, 0x4a4a52, 0x8a5a2e][(rng() * 5) | 0], speed: 6 + rng() * 3 });
+    for (let i = 0; i < 14; i++) makeNPC('police');
+    // traffic across all cities
+    const CAR_COLORS = [0xc23a2e, 0x2e6fc2, 0x2e8f4a, 0xc2a02e, 0x7a3ac2];
+    for (let i = 0; i < 9; i++) makeCarEntity({ color: CAR_COLORS[(rng() * CAR_COLORS.length) | 0] });
+    for (let i = 0; i < 6; i++) makeCarEntity({ isPolice: true, color: 0xe8e8e8, speed: 9.5 });
+    for (let i = 0; i < 11; i++) makeCarEntity({ color: [0x2e6fc2, 0x2e8f4a, 0xc2a02e, 0x4a4a52, 0x8a5a2e][(rng() * 5) | 0], speed: 6 + rng() * 3 });
 
     spawned = true;
   }
@@ -1671,14 +1704,56 @@
   }
 
   /* ---------------- Camera ---------------- */
+  const CAM_HEIGHT = 46, CAM_BACK = 28;      // high enough for a wide overview
   const camTarget = new THREE.Vector3();
   function updateCamera(dt) {
     const p = player.inCar ? player.inCar.group.position : player.pos;
-    const desired = new THREE.Vector3(p.x, 40, p.z + 26);
+    const desired = new THREE.Vector3(p.x, CAM_HEIGHT, p.z + CAM_BACK);
     const k = 1 - Math.pow(0.001, dt);
     camTarget.lerp(desired, k);
     camera.position.copy(camTarget);
     camera.lookAt(p.x, 0, p.z);
+  }
+
+  /* ---------------- See-through occlusion ----------------
+     The camera looks from the south. A tall building standing between it and
+     a character would hide them — so any building blocking the view of the
+     hero OR of nearby pedestrians smoothly fades to glass (opacity ~0.15)
+     and fades back once the path is clear. Roads & people stay visible. */
+  function updateOcclusion(dt) {
+    // watchers: the hero + every pedestrian close enough to matter
+    const watchers = [];
+    watchers.push(player.inCar ? player.inCar.group.position : player.pos);
+    for (let i = 0; i < NPCs.length; i++) {
+      const n = NPCs[i];
+      if (n.dead) continue;
+      const dx = n.pos.x - watchers[0].x, dz = n.pos.z - watchers[0].z;
+      if (dx * dx + dz * dz < 2025) watchers.push(n.pos);   // within 45 m
+    }
+    for (let i = 0; i < buildingBoxes.length; i++) {
+      const b = buildingBoxes[i];
+      let target = 1;
+      for (let j = 0; j < watchers.length && target === 1; j++) {
+        const wx = watchers[j].x, wz = watchers[j].z;
+        // sight ray rises from the watcher towards the camera (south).
+        // It stays below the rooftop until z = wz + 0.609*h, so a building
+        // whose south face begins inside that window blocks the view.
+        if (
+          b.maxX > wx - 1.4 && b.minX < wx + 1.4 &&                 // overlaps sight column
+          b.minZ > wz - 0.6 &&                                      // south of the watcher...
+          b.minZ <= wz + Math.min(CAM_BACK, 0.609 * b.h)            // ...inside the blind window
+        ) target = 0.15;
+      }
+      if (target !== b.lastOp) {
+        b.fade += (target - b.fade) * Math.min(1, dt * 10);
+        const op = Math.abs(b.fade - target) < 0.01 ? target : b.fade;
+        if (op !== b.lastOp) {
+          b.mats[0].opacity = op;
+          b.mats[1].opacity = op;
+          b.lastOp = op;
+        }
+      }
+    }
   }
 
   /* ---------------- FX update ---------------- */
@@ -1851,6 +1926,7 @@
     updateCamera(dt);
 
     if (flashT > 0) { flashT -= dt; flashEl.style.opacity = Math.max(0, flashT * 2); }
+    updateOcclusion(dt);
     updateMinimap();
     renderer.render(scene, camera);
   }
@@ -1894,7 +1970,7 @@
   spawnWorld();
   buildMinimapStatic();
   updateMinimap();
-  camera.position.set(SPAWN.x, 40, SPAWN.z + 26);
+  camera.position.set(SPAWN.x, CAM_HEIGHT, SPAWN.z + CAM_BACK);
   camera.lookAt(SPAWN.x, 0, SPAWN.z);
   renderer.render(scene, camera);
 
@@ -1902,6 +1978,7 @@
   window.__GTA__ = {
     get player() { return player; }, NPCs, cars, WEAPONS, hittables,
     get camera() { return camera; }, get scene() { return scene; },
-    N, RIVER_Z, RIVER_HALF, isInsideBuilding, isInsideWater
+    N, RIVER_Z, RIVER_HALF, isInsideBuilding, isInsideWater,
+    buildingBoxes, CITY_CORES
   };
 })();
