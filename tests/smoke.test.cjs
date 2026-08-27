@@ -397,5 +397,31 @@ check('boats actively cruise the river (moved ' + bMoved.toFixed(1) + ' u)', bMo
 check('boats stay inside the river band',
   G.boats.every(b => Math.abs(b.pos.z - G.RIVER_Z) <= G.RIVER_HALF - 1));
 
+/* ================= TEST 13: bridge ramps aligned (world-group regression) ====== */
+// REGRESSION: `worldGroup.add(box).rotation.x = a` tilted the ENTIRE world,
+// burying/levitating characters & vehicles near bridges. Ramps must be their
+// own meshes and the world group must never be rotated.
+const wg = G.world;
+check('world group rotation stays at zero (regression)', wg.rotation.x === 0 && wg.rotation.y === 0 && wg.rotation.z === 0);
+G.scene.updateMatrixWorld(true);
+let deckBB = null, rampLo = 0, rampHi = -99;
+G.scene.traverse(o => {
+  if (!o.isMesh || o.geometry.type !== 'BoxGeometry') return;
+  const gp = o.geometry.parameters; if (!gp) return;
+  if (gp.width === 9 && (gp.height === 0.14 || gp.height === 0.12) && o.getWorldPosition(new THREE.Vector3()).y > 0.4) {
+    const bb = new THREE.Box3().setFromObject(o);
+    if (gp.depth > 30) { if (!deckBB) deckBB = bb; }
+    else { rampLo = Math.max(rampLo, bb.min.y); rampHi = Math.min(rampHi, bb.max.y + 0.0); }
+    if (gp.depth < 30) rampHi = Math.max(rampHi, bb.max.y);
+  }
+});
+if (!deckBB) { check('bridge deck mesh exists', false); }
+else {
+  check('deck is LEVEL (' + (deckBB.max.y - deckBB.min.y).toFixed(2) + ' thick)',
+    deckBB.max.y - deckBB.min.y <= 0.2);
+  check('ramps rise from bank ~0 to deck ~1.5 (top=' + rampHi.toFixed(2) + ', bottom=' + rampLo.toFixed(2) + ')',
+    rampHi <= 1.75 && rampHi >= 1.3 && rampLo <= 0.15);
+}
+
 console.log(failures === 0 ? '\nALL SMOKE TESTS PASSED' : '\n' + failures + ' TEST(S) FAILED');
 process.exit(failures === 0 ? 0 : 1);

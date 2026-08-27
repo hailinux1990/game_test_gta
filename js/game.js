@@ -429,13 +429,18 @@
     }
 
     // ---- bridges: every avenue crosses the river on a RAISED concrete arch ----
-    // deck sits 1.5 units above the water so the river boats can glide underneath
+    // deck sits 1.5 units above the water so the river boats can glide underneath.
+    // NOTE: .add() returns the PARENT, so each ramp gets its own mesh reference
+    // to tilt — rotating the returned value would tilt the entire world group!
+    const rampAngle = Math.atan2(DECK_Y, RAMP_LEN);
     for (let i = 0; i <= N; i++) {
       worldGroup.add(box(ROAD, 0.14, RIVER_HALF * 2 + 4, COLORS.bridge, cx(i), DECK_Y - 0.07, RIVER_Z));
-      worldGroup.add(box(ROAD, 0.12, RAMP_LEN, COLORS.bridge, cx(i), DECK_Y / 2, RIVER_Z - RIVER_HALF - 2 - RAMP_LEN / 2))
-        .rotation.x = Math.atan2(DECK_Y, RAMP_LEN);          // north ramp descends to the bank
-      worldGroup.add(box(ROAD, 0.12, RAMP_LEN, COLORS.bridge, cx(i), DECK_Y / 2, RIVER_Z + RIVER_HALF + 2 + RAMP_LEN / 2))
-        .rotation.x = -Math.atan2(DECK_Y, RAMP_LEN);         // south ramp
+      const rampN = box(ROAD, 0.12, RAMP_LEN, COLORS.bridge, cx(i), DECK_Y / 2, RIVER_Z - RIVER_HALF - 2 - RAMP_LEN / 2);
+      rampN.rotation.x = -rampAngle;                       // north ramp: dips AWAY from deck
+      worldGroup.add(rampN);
+      const rampS = box(ROAD, 0.12, RAMP_LEN, COLORS.bridge, cx(i), DECK_Y / 2, RIVER_Z + RIVER_HALF + 2 + RAMP_LEN / 2);
+      rampS.rotation.x = rampAngle;                        // south ramp mirrored
+      worldGroup.add(rampS);
       worldGroup.add(box(0.35, 0.8, RIVER_HALF * 2 + 4, COLORS.railing, cx(i) - ROAD / 2 + 0.25, DECK_Y + 0.36, RIVER_Z));
       worldGroup.add(box(0.35, 0.8, RIVER_HALF * 2 + 4, COLORS.railing, cx(i) + ROAD / 2 - 0.25, DECK_Y + 0.36, RIVER_Z));
       // lane markings across the deck
@@ -2194,6 +2199,7 @@
   window.__GTA__ = {
     get player() { return player; }, NPCs, cars, boats, WEAPONS, hittables,
     get camera() { return camera; }, get scene() { return scene; },
+    get world() { return worldGroup; },
     N, RIVER_Z, RIVER_HALF, isInsideBuilding, isInsideWater, groundY,
     buildingBoxes, CITY_CORES,
     // test hooks: rebuild the police cruiser fleet via the production spawner
