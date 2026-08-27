@@ -324,8 +324,10 @@
     }
 
     const tex = makeFacade(pal[(rng() * pal.length) | 0], (minX * 13 + minZ * 7) | 0);
-    const sideMat = new THREE.MeshLambertMaterial({ map: tex, transparent: true });
-    const topMat = new THREE.MeshLambertMaterial({ color: 0x4a4d55, transparent: true });
+    // keep materials OPAQUE by default (huge draw-order win); the occlusion
+    // fader flips them to transparent only for the split seconds they fade
+    const sideMat = new THREE.MeshLambertMaterial({ map: tex });
+    const topMat = new THREE.MeshLambertMaterial({ color: 0x4a4d55 });
     const mats = [sideMat, sideMat, topMat, topMat, sideMat, sideMat];
     const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mats);
     m.position.set((minX + maxX) / 2, 0.02 + h / 2, (minZ + maxZ) / 2);
@@ -654,7 +656,7 @@
     muzzle.position.set(0, 1.45, 0.42);
 
     return {
-      group: g, pos: SPAWN.clone(), vel: new THREE.Vector3(),
+      group: g, pos: SPAWN.clone(), prevPos: SPAWN.clone(), vel: new THREE.Vector3(),
       hp: 100, maxHp: 100, weapon: 0,
       ammoStore: { 2: MAG_SIZE, 3: AK_MAG },   // per-weapon reserve
       shotsFired: 0,
@@ -745,7 +747,8 @@
       curSpeed: opt.speed || 7.5,
       laneOffset: (rng() < 0.5 ? 1 : -1) * (ROAD / 4), honkT: 0, dead: false,
       stolen: false, driverMesh: null,
-      mode: 'traffic', deployed: false, deploySide: 2.2   // police pursuit state
+      mode: 'traffic', deployed: false, deploySide: 2.2,   // police pursuit state
+      prevPos: start.clone(), prevHeading: 0               // render-interpolation state
     };
     // every AI car starts with a visible driver inside
     const drv = makeDriver(car.isPolice);
@@ -1300,6 +1303,7 @@
 
   /* ---------------- AI: cars ---------------- */
   let lastSirenAt = 0;
+  const _rpos = new THREE.Vector3();   // scratch: rendered run-over position
   function updateCar(car, dt) {
     if (car.dead) return;
     if (car.driver) return;   // player-driven
@@ -1334,33 +1338,24 @@
     if (car.mode === 'pursuit') drivePursuit(car, dt);
     else driveTraffic(car, dt);
 
-    // render with right-lane offset
-    const right = new THREE.Vector3(Math.cos(car.heading), 0, -Math.sin(car.heading));
-    const renderPos = car.pos.clone().addScaledVector(right, car.laneOffset);
-    car.group.position.set(renderPos.x, 0, renderPos.z);
-    car.group.rotation.y = car.heading;
-    car.group.userData.wheels.forEach(w => w.rotation.x += car.curSpeed * dt * 4);
-
-    // police light flicker + siren wail while hunting
-    if (car.group.userData.lightRed) {
-      const t = performance.now() / 160;
-      const on = Math.floor(t) % 2 === 0;
-      car.group.userData.lightRed.visible = on;
-      car.group.userData.lightBlue.visible = !on;
-      if (car.mode === 'pursuit' && performance.now() - lastSirenAt > 4200 &&
-          car.pos.distanceTo(player.pos) < 50) {
-        lastSirenAt = performance.now();
-        Sfx.siren();
-      }
+    // siren wail while hunting (visual flicker lives in the interpolated render pass)
+    if (car.mode === 'pursuit' && car.group.userData.lightRed &&
+        performance.now() - lastSirenAt > 4200 &&
+        car.pos.distanceTo(player.pos) < 50) {
+      lastSirenAt = performance.now();
+      Sfx.siren();
     }
 
     // run over pedestrians — NPCs only, never the player.
     // The blame goes to the player ONLY when he is the one driving.
     if (car.curSpeed > 2) {
+      _rpos.set(
+        car.pos.x + Math.cos(car.heading) * car.laneOffset, 0,
+        car.pos.z - Math.sin(car.heading) * car.laneOffset);
       const fwd = new THREE.Vector3(Math.sin(car.heading), 0, Math.cos(car.heading));
       NPCs.forEach(n => {
         if (n.dead) return;
-        const d = n.pos.clone().sub(renderPos).setY(0).length();
+        const d = n.pos.distanceTo(_rpos);
         if (d < 1.1) {
           damageNPC(n, 40, n.pos.clone().setY(1.0), fwd);
           if (car.driver) {
@@ -1371,47 +1366,64 @@
       });
     }
     // player takes NO damage from cars (chạm xe không chết)
+    // NOTE: group transforms are applied in animate() via interpolation
   }
 
-  // normal route traffic; always brakes for the hero standing ahead
+  // normal route traffic: gentle throttle, firm-smooth braking for the hero,
+  // lifts off for sharp corners and steers with a capped turn rate
   function driveTraffic(car, dt) {
     const route = car.route;
-    const wp = new THREE.Vector3(route[car.wpIndex][0], 0, route[car.wpIndex][1]);
-    if (wp.clone().sub(car.pos).length() < 2.5) car.wpIndex = (car.wpIndex + 1) % route.length;
-
-    const playerNear = !player.inCar && !player.dead && car.pos.distanceTo(player.pos) < 4.5;
-    if (playerNear) {
-      car.curSpeed = Math.max(0, car.curSpeed - dt * 20);   // phanh gấp -> dừng lại
-    } else {
-      car.curSpeed = Math.min(car.maxSpeed, car.curSpeed + dt * 4);
+    let wx = route[car.wpIndex][0], wz = route[car.wpIndex][1];
+    let dxT = wx - car.pos.x, dzT = wz - car.pos.z;
+    if (dxT * dxT + dzT * dzT < 12.25) {                    // waypoint reached (3.5 m)
+      car.wpIndex = (car.wpIndex + 1) % route.length;
+      wx = route[car.wpIndex][0]; wz = route[car.wpIndex][1];
+      dxT = wx - car.pos.x; dzT = wz - car.pos.z;
     }
 
+    const desired = Math.atan2(dxT, dzT);
+    let dh = desired - car.heading;
+    while (dh > Math.PI) dh -= Math.PI * 2;
+    while (dh < -Math.PI) dh += Math.PI * 2;
+
+    const playerNear = !player.inCar && !player.dead && car.pos.distanceTo(player.pos) < 4.5;
+
+    // real-car pacing: ease onto the throttle, lift off for sharp turns,
+    // and brake to a FULL but silky stop whenever the hero stands ahead
+    let target = car.maxSpeed * Math.max(0.35, 1 - Math.abs(dh) * 0.55);
+    let rate = 1.9;
+    if (playerNear) { target = 0; rate = 6; }
+    car.curSpeed += (target - car.curSpeed) * Math.min(1, dt * rate);
+    if (playerNear && car.curSpeed < 0.02) car.curSpeed = 0;
+
     if (car.curSpeed > 0.01) {
-      steerToward(car, wp.x, wp.z, dt * 4, false);
+      steerToward(car, wx, wz, dt, false, 2.4);
       const fwd = new THREE.Vector3(Math.sin(car.heading), 0, Math.cos(car.heading));
       car.pos.addScaledVector(fwd, car.curSpeed * dt);
       clampToWorld(car.pos);
     }
   }
 
-  // WANTED pursuit: race at the hero, stop close by, officer jumps out shooting
+  // WANTED pursuit: race at the hero, glide to a halt close by,
+  // officer jumps out shooting
   function drivePursuit(car, dt) {
     const dist = car.pos.distanceTo(player.pos);
-
+    let target, rate;
     if (dist < 11) {
-      // arrived at the scene: skid to a halt and deploy an officer
-      car.curSpeed = Math.max(0, car.curSpeed - dt * 24);
-      if (car.curSpeed < 0.6 && !car.deployed) {
+      target = 0; rate = 5;                                  // smooth skid to the kerb
+      if (car.curSpeed < 0.8 && !car.deployed) {
         deployOfficer(car);
         car.deployed = true;
       }
     } else {
-      car.curSpeed = Math.min(13, car.curSpeed + dt * 7);   // flat-out pursuit
-      if (car.deployed && dist > 16) car.deployed = false;  // lost him again? re-arm
+      target = 13; rate = 2.2;                               // flat-out pursuit
+      if (car.deployed && dist > 16) car.deployed = false;   // lost him again? re-arm
     }
+    car.curSpeed += (target - car.curSpeed) * Math.min(1, dt * rate);
+    if (target === 0 && car.curSpeed < 0.03) car.curSpeed = 0;
 
     if (car.curSpeed > 0.01) {
-      steerToward(car, player.pos.x, player.pos.z, dt * 3.2, true);
+      steerToward(car, player.pos.x, player.pos.z, dt, true, 3.2);
       const fwd = new THREE.Vector3(Math.sin(car.heading), 0, Math.cos(car.heading));
       const step = fwd.clone().multiplyScalar(car.curSpeed * dt);
       car.pos.add(step);
@@ -1420,8 +1432,8 @@
     }
   }
 
-  // shared steering; avoid mode probes ahead and swings around buildings
-  function steerToward(car, tx, tz, k, avoid) {
+  // shared steering with a CAPPED TURN RATE — no snapping, always fluid arcs
+  function steerToward(car, tx, tz, dt, avoid, turnRate) {
     const desired = Math.atan2(tx - car.pos.x, tz - car.pos.z);
     let dh = desired - car.heading;
     while (dh > Math.PI) dh -= Math.PI * 2;
@@ -1436,7 +1448,8 @@
         dh = (isInsideBuilding(lx, lz) ? -1 : 1) * 1.1;   // swing to the free side
       }
     }
-    car.heading += dh * Math.min(1, k);
+    const maxTurn = (turnRate || 2.4) * dt;                  // rad/s ceiling
+    car.heading += Math.max(-maxTurn, Math.min(maxTurn, dh));
   }
 
   // a police officer jumps out of the stopped cruiser and hunts the hero on foot
@@ -1748,6 +1761,9 @@
         b.fade += (target - b.fade) * Math.min(1, dt * 10);
         const op = Math.abs(b.fade - target) < 0.01 ? target : b.fade;
         if (op !== b.lastOp) {
+          const fading = op < 0.999;
+          b.mats[0].transparent = fading;      // transparent pipeline only while needed
+          b.mats[1].transparent = fading;
           b.mats[0].opacity = op;
           b.mats[1].opacity = op;
           b.lastOp = op;
@@ -1913,15 +1929,63 @@
 
   /* ---------------- Loop ---------------- */
   const clock = new THREE.Clock();
+  const FIXED_STEP = 1 / 60;                 // physics runs at a steady 60 Hz
+  let simAcc = 0;
+  const _ipos = new THREE.Vector3();
+  function angLerp(a, b, t) {                // shortest-path angle interpolation
+    let d = b - a;
+    while (d > Math.PI) d -= Math.PI * 2;
+    while (d < -Math.PI) d += Math.PI * 2;
+    return a + d * t;
+  }
+
   function animate() {
     requestAnimationFrame(animate);
     const dt = Math.min(0.05, clock.getDelta());
 
-    if (!player.dead) {
-      updatePlayer(dt);
+    // snapshot the pre-step state so rendering can interpolate smoothly
+    cars.forEach(c => { c.prevPos.copy(c.pos); c.prevHeading = c.heading; });
+    player.prevPos.copy(player.pos);
+
+    // FIXED-TIMESTEP SIMULATION — identical handling at any frame rate,
+    // lag spikes can no longer teleport cars across the map
+    simAcc += dt;
+    let steps = 0;
+    while (simAcc >= FIXED_STEP && steps < 4) {
+      if (!player.dead) updatePlayer(FIXED_STEP);
+      NPCs.forEach(n => updateNPC(n, FIXED_STEP));
+      cars.forEach(c => updateCar(c, FIXED_STEP));
+      simAcc -= FIXED_STEP;
+      steps++;
     }
-    NPCs.forEach(n => updateNPC(n, dt));
-    cars.forEach(c => updateCar(c, dt));
+    if (steps === 4) simAcc = 0;             // huge hitch: drop the backlog
+    const alpha = Math.max(0, Math.min(1, simAcc / FIXED_STEP));
+
+    // RENDER INTERPOLATION — every car glides between its last two physics states
+    cars.forEach(c => {
+      if (!c.dead) {
+        _ipos.copy(c.prevPos).lerp(c.pos, alpha);
+        const ih = angLerp(c.prevHeading, c.heading, alpha);
+        c.group.position.set(
+          _ipos.x + Math.cos(ih) * c.laneOffset, 0,
+          _ipos.z - Math.sin(ih) * c.laneOffset);
+        c.group.rotation.y = ih;
+        c.group.userData.wheels.forEach(w => w.rotation.x += c.curSpeed * dt * 4);
+        if (c.group.userData.lightRed) {
+          const t = performance.now() / 160;
+          const on = Math.floor(t) % 2 === 0;
+          c.group.userData.lightRed.visible = on;
+          c.group.userData.lightBlue.visible = !on;
+        }
+      }
+    });
+
+    // hero glides on foot as well
+    if (!player.inCar) {
+      _ipos.copy(player.prevPos).lerp(player.pos, alpha);
+      player.group.position.copy(_ipos);
+    }
+
     updateFX(dt);
     updateCamera(dt);
 

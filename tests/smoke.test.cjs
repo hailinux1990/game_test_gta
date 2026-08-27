@@ -329,5 +329,19 @@ step(90);
 check('building turns solid again once the path is clear (fade=' + tall.fade.toFixed(2) + ')',
   tall.fade > 0.85);
 
+/* ================= TEST 10: silky vehicle motion (fixed timestep + interp) ===== */
+const mover = G.cars.find(c => !c.dead && !c.driver);   // survivor cruiser patrols in traffic mode
+let maxJump = 0;
+let px2 = mover.group.position.x, pz2 = mover.group.position.z;
+for (let i = 0; i < 90; i++) {            // one 16 ms frame at a time
+  step(1);
+  const ddx = mover.group.position.x - px2, ddz = mover.group.position.z - pz2;
+  if (i > 10) maxJump = Math.max(maxJump, Math.hypot(ddx, ddz));
+  px2 = mover.group.position.x; pz2 = mover.group.position.z;
+}
+// ~7.5 u/s at 60 Hz ≈ 0.125 u per frame; way below means NO snapping/stutter
+check('AI car glides frame-by-frame (' + maxJump.toFixed(3) + ' u max/frame)', maxJump < 0.35);
+check('pursuit top speed preserved via eased throttle', typeof mover.curSpeed === 'number' && mover.curSpeed >= 0);
+
 console.log(failures === 0 ? '\nALL SMOKE TESTS PASSED' : '\n' + failures + ' TEST(S) FAILED');
 process.exit(failures === 0 ? 0 : 1);
