@@ -961,12 +961,118 @@
   /* ---------------- Damage ---------------- */
   const raycaster = new THREE.Raycaster();
 
+  // NPC communication system
+  const NPC_SOUNDS = {
+    civilianPain: () => {
+      const freq = 220 + Math.random() * 220; // panic scream pitch
+      Sfx.tone(freq, 0.4, 'sawtooth', 0.3, 80);
+      Sfx.noise(0.3, 0.4, freq * 0.8, true);
+    },
+    civilianPanic: () => {
+      // high-pitched panic when police nearby
+      Sfx.tone(880 + Math.random() * 440, 0.3, 'square', 0.25, 100);
+      Sfx.noise(0.4, 0.3, 1200, true);
+    },
+    policeWarning: () => {
+      // police yelling "Stop! Police!"
+      const freq = 150 + Math.random() * 50;
+      Sfx.tone(freq, 0.25, 'square', 0.35, 60);
+      Sfx.siren(); // use existing siren sound for backup call
+    },
+    policeBackup: () => {
+      // police calling backup
+      Sfx.tone(110, 0.4, 'square', 0.3, 50);
+      for (let i = 0; i < 3; i++) {
+        setTimeout(() => Sfx.tone(110 + i * 30, 0.15, 'square', 0.25), i * 80);
+      }
+    },
+    civilianWarning: () => {
+      // civilian warning when police approach
+      Sfx.tone(660, 0.2, 'square', 0.2, 400);
+    },
+    highWantedWarning: () => {
+      // increased police response
+      Sfx.warn(); // existing warning sound
+      for (let i = 0; i < 2; i++) {
+        setTimeout(() => Sfx.tone(110 + i * 40, 0.2, 'square', 0.25), i * 100);
+      }
+    }
+  };
+
+  function triggerNPCSpeech(npc, cause) {
+    if (!Sfx.enabled) return;
+    
+    if (npc.type === 'civilian') {
+      if (npc.hp <= 0) {
+        // death scream
+        NPC_SOUNDS.civilianPain();
+        floatText('Agh!', npc.group.position.x, npc.group.position.z + 2.5, '#ff6');
+      } else {
+        // pain scream
+        NPC_SOUNDS.civilianPain();
+        floatText('Whoa!', npc.group.position.x, npc.group.position.z + 2.5, '#ff6');
+      }
+      
+      // check if police nearby
+      const nearbyPolice = NPCs.some(p => p.type === 'police' && !p.dead && p.pos.distanceTo(npc.pos) < 15);
+      if (nearbyPolice) {
+        NPC_SOUNDS.civilianWarning();
+      }
+      
+    } else if (npc.type === 'police') {
+      if (cause === 'playerShot') {
+        NPC_SOUNDS.policeWarning();
+        floatText('Hey! What are you doing?!', npc.group.position.x, npc.group.position.z + 2.5, '#66f');
+      }
+    }
+  }
+
+  function updateNPCSpeech() {
+    // dynamic police backup calls based on wanted level
+    if (player.wanted >= 3) {
+      // police call backup when player has high wanted level
+      NPCs.forEach(npc => {
+        if (npc.type === 'police' && !npc.dead && npc.state === 'patrol' && 
+            npc.pos.distanceTo(player.pos) < 30) {
+          if (!npc.backupCalled && Math.random() < 0.02) {
+            NPC_SOUNDS.policeBackup();
+            npc.backupCalled = true;
+            setTimeout(() => { npc.backupCalled = false; }, 5000);
+          }
+        }
+      });
+    }
+    
+    // police coordinate when multiple officers see crime
+    if (player.wanted >= 2) {
+      const policeNearPlayer = NPCs.filter(n => n.type === 'police' && !n.dead && n.state === 'patrol' &&
+                                               n.pos.distanceTo(player.pos) < 25);
+      if (policeNearPlayer.length >= 2 && !policeNearPlayer[0].coordinated) {
+        // police coordinate approach
+        policeNearPlayer.forEach(p => p.coordinated = true);
+        Sfx.tone(100, 0.3, 'square', 0.25, 60);
+        floatText('Police coordinated!', player.pos.x, player.pos.z + 3, '#66f');
+        setTimeout(() => {
+          policeNearPlayer.forEach(p => p.coordinated = false);
+        }, 2000);
+      }
+    }
+  }
+
   function damageNPC(npc, dmg, hitPoint, dir) {
     if (npc.dead) return;
     npc.hp -= dmg;
     npc.meshFlash = 0.12;
     spawnBlood(hitPoint || npc.pos.clone().setY(1.1), dir, dmg > 30 ? 14 : 8);
     Sfx.blood();
+    
+    // trigger NPC speech based on who got hit
+    if (npc.type === 'civilian') {
+      triggerNPCSpeech(npc, 'shot');
+    } else if (npc.type === 'police') {
+      triggerNPCSpeech(npc, 'playerShot');
+    }
+    
     if (npc.hp <= 0) killNPC(npc, dir);
     else if (npc.type === 'civilian') { npc.state = 'flee'; npc.fleeDir.copy(dir).setY(0).normalize(); npc.fleeT = 4; }
   }
