@@ -108,7 +108,7 @@ check('water detection works', G.isInsideWater(0, G.RIVER_Z) && !G.isInsideWater
 check('player spawns on open ground (no building/water)',
   !G.isInsideBuilding(player.pos.x, player.pos.z) && !G.isInsideWater(player.pos.x, player.pos.z));
 check('world spawned: NPCs=' + G.NPCs.length + ' cars=' + G.cars.length,
-  G.NPCs.length === 72 && G.cars.length === 26);
+  G.NPCs.length === 104 && G.cars.length === 34);
 check('every AI car has a visible driver mesh', G.cars.every(c => c.driverMesh !== null));
 
 /* ================= TEST 1: AK-47 with 500 rounds ================= */
@@ -193,6 +193,15 @@ key('KeyE');                                       // exit again
 /* ================= TEST 5: shoot a car until it EXPLODES (+ chain reaction) ===== */
 G.NPCs.forEach(n => { n.pos.set(400, 0, 400); n.group.position.set(400, 0, 400); });
 const c1 = G.cars[2], c2 = G.cars[3];
+// evacuate every other car far away so the chain reaction can't eat the fleet
+G.cars.forEach((c, k) => {
+  if (c !== c1 && c !== c2 && !c.dead) {
+    c.pos.set(-140 + (k % 12) * 26, 0, 130 + Math.floor(k / 12) * 18);
+    c.group.position.copy(c.pos);
+    c.prevPos.copy(c.pos);
+    c.curSpeed = 0;
+  }
+});
 [c1, c2].forEach(c => {                            // freeze both targets in place
   c.dead = false; c.stolen = true;                 // stolen=true so nothing re-ejects drivers
   c.driverMesh = null;
@@ -342,6 +351,51 @@ for (let i = 0; i < 90; i++) {            // one 16 ms frame at a time
 // ~7.5 u/s at 60 Hz ≈ 0.125 u per frame; way below means NO snapping/stutter
 check('AI car glides frame-by-frame (' + maxJump.toFixed(3) + ' u max/frame)', maxJump < 0.35);
 check('pursuit top speed preserved via eased throttle', typeof mover.curSpeed === 'number' && mover.curSpeed >= 0);
+
+/* ================= TEST 11: wanted-level police escalation ====================== */
+const pursuing = () => G.cars.filter(c => !c.dead && c.isPolice && c.mode === 'pursuit').length;
+const aliveCruisers = () => G.cars.filter(c => !c.dead && c.isPolice).length;
+const footChasing = () => G.NPCs.filter(n => !n.dead && n.type === 'police' && n.state === 'chase').length;
+player.wanted = 0; step(30);
+// TEST 6 isolated its pursuit by killing other cars -> rebuild the fleet
+while (aliveCruisers() < 8) G.spawnCruiser();
+step(2);
+const A = aliveCruisers();
+check('police fleet rebuilt for escalation tests (' + A + ' cruisers)', A === 8);
+player.wanted = 1; step(40);
+const p1 = pursuing();
+check('1 sao -> exactly ' + Math.min(1, A) + ' cruiser pursues (got ' + p1 + ')',
+  p1 === Math.min(1, A));
+player.wanted = 3; step(60);
+const p3 = pursuing();
+const huntersBefore = new Set(
+  G.NPCs.filter(n => n.type === 'police' && n.state === 'chase'));
+check('3 sao -> ' + Math.min(3, A) + ' cruisers pursue (got ' + p3 + ')',
+  p3 === Math.min(3, A));
+step(400);                                   // ~6.7 s of dispatch orders
+const extraCops = G.NPCs.filter(n => n.type === 'police' && !n.dead &&
+  n.state === 'chase' && !huntersBefore.has(n)).length;
+check('3 sao -> extra walking cops join the hunt (+' + extraCops + ')',
+  extraCops >= 1 && footChasing() >= 2);
+player.wanted = 5; step(40);
+check('5 sao -> EVERY cruiser joins the hunt (' + pursuing() + '/' + A + ')',
+  pursuing() === A);
+player.wanted = 0; step(120);
+check('hết sao -> toàn bộ rút lui về tuần tra', pursuing() === 0 && footChasing() === 0);
+
+/* ================= TEST 12: river boats under the raised bridges ================ */
+check('river has plenty of boats (' + G.boats.length + ')', G.boats.length >= 10);
+check('bridge deck is raised for boat clearance (deck=' + G.groundY(-17.5, G.RIVER_Z).toFixed(2) + ' m)',
+  G.groundY(-17.5, G.RIVER_Z) > 1.3);
+check('open water sits at ground level (y=' + G.groundY(-70, G.RIVER_Z) + ')',
+  G.groundY(-70, G.RIVER_Z) === 0);
+const bt = G.boats[0];
+const bx0 = bt.pos.x;
+step(150);                                   // 2.5 s of cruising
+const bMoved = Math.abs(bt.pos.x - bx0);
+check('boats actively cruise the river (moved ' + bMoved.toFixed(1) + ' u)', bMoved > 2);
+check('boats stay inside the river band',
+  G.boats.every(b => Math.abs(b.pos.z - G.RIVER_Z) <= G.RIVER_HALF - 1));
 
 console.log(failures === 0 ? '\nALL SMOKE TESTS PASSED' : '\n' + failures + ' TEST(S) FAILED');
 process.exit(failures === 0 ? 0 : 1);

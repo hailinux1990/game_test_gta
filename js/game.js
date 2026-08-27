@@ -428,14 +428,19 @@
       }
     }
 
-    // ---- bridges: every avenue crosses the river on a concrete deck ----
+    // ---- bridges: every avenue crosses the river on a RAISED concrete arch ----
+    // deck sits 1.5 units above the water so the river boats can glide underneath
     for (let i = 0; i <= N; i++) {
-      worldGroup.add(box(ROAD, 0.12, RIVER_HALF * 2 + 4, COLORS.bridge, cx(i), 0.36, RIVER_Z));
-      worldGroup.add(box(0.35, 0.8, RIVER_HALF * 2 + 4, COLORS.railing, cx(i) - ROAD / 2 + 0.25, 0.72, RIVER_Z));
-      worldGroup.add(box(0.35, 0.8, RIVER_HALF * 2 + 4, COLORS.railing, cx(i) + ROAD / 2 - 0.25, 0.72, RIVER_Z));
+      worldGroup.add(box(ROAD, 0.14, RIVER_HALF * 2 + 4, COLORS.bridge, cx(i), DECK_Y - 0.07, RIVER_Z));
+      worldGroup.add(box(ROAD, 0.12, RAMP_LEN, COLORS.bridge, cx(i), DECK_Y / 2, RIVER_Z - RIVER_HALF - 2 - RAMP_LEN / 2))
+        .rotation.x = Math.atan2(DECK_Y, RAMP_LEN);          // north ramp descends to the bank
+      worldGroup.add(box(ROAD, 0.12, RAMP_LEN, COLORS.bridge, cx(i), DECK_Y / 2, RIVER_Z + RIVER_HALF + 2 + RAMP_LEN / 2))
+        .rotation.x = -Math.atan2(DECK_Y, RAMP_LEN);         // south ramp
+      worldGroup.add(box(0.35, 0.8, RIVER_HALF * 2 + 4, COLORS.railing, cx(i) - ROAD / 2 + 0.25, DECK_Y + 0.36, RIVER_Z));
+      worldGroup.add(box(0.35, 0.8, RIVER_HALF * 2 + 4, COLORS.railing, cx(i) + ROAD / 2 - 0.25, DECK_Y + 0.36, RIVER_Z));
       // lane markings across the deck
       for (let s = RIVER_Z - RIVER_HALF + 3; s < RIVER_Z + RIVER_HALF - 3; s += 8) {
-        worldGroup.add(plane(0.28, 3.2, COLORS.line, cx(i), 0.43, s));
+        worldGroup.add(plane(0.28, 3.2, COLORS.line, cx(i), DECK_Y + 0.02, s));
       }
     }
 
@@ -455,6 +460,20 @@
     v.x = Math.max(-L, Math.min(L, v.x));
     v.z = Math.max(-L, Math.min(L, v.z));
     return v;
+  }
+
+  /* ---- bridge height for rendering: characters/cars glide up the ramps ---- */
+  const DECK_Y = 1.5, RAMP_LEN = 8;
+  function groundY(x, z) {
+    const dz = Math.abs(z - RIVER_Z);
+    if (dz > RIVER_HALF + 2 + RAMP_LEN) return 0;
+    for (let i = 0; i <= N; i++) {
+      if (Math.abs(x - cx(i)) <= ROAD / 2 + 0.6) {
+        if (dz <= RIVER_HALF + 2) return DECK_Y;              // on the arch
+        return Math.max(0, DECK_Y * (1 - (dz - RIVER_HALF - 2) / RAMP_LEN)); // ramp slope
+      }
+    }
+    return 0;
   }
 
   /* ---------------- Road routes for AI cars ---------------- */
@@ -763,18 +782,89 @@
     return car;
   }
 
+  /* ---------------- River traffic: boats cruising under the bridges ---------------- */
+  const boats = [];
+  function makeBoat(dirX, startX) {
+    const g = new THREE.Group();
+    const hullC = [0xb03a2e, 0x2e6fb0, 0xd9c27a, 0x4a8f5f, 0xe8e4da][(rng() * 5) | 0];
+    const hull = new THREE.Mesh(new THREE.BoxGeometry(1.7, 0.55, 4.8), mat(hullC));
+    hull.position.y = 0.3;
+    const bow = new THREE.Mesh(new THREE.BoxGeometry(1.15, 0.45, 1.5), mat(hullC));
+    bow.position.set(0, 0.27, 2.9);                       // tapered nose (same tone)
+    const cabin = new THREE.Mesh(new THREE.BoxGeometry(1.4, 0.48, 1.7), mat(0xe9e4d4));
+    cabin.position.set(0, 0.82, -0.5);
+    const glass = new THREE.Mesh(new THREE.BoxGeometry(1.44, 0.2, 1.74), mat(0x223649));
+    glass.position.set(0, 1.02, -0.5);
+    g.add(hull, bow, cabin, glass);
+    scene.add(g);
+
+    const boat = {
+      group: g,
+      pos: new THREE.Vector3(startX, 0, RIVER_Z + (rng() * 2 - 1) * (RIVER_HALF - 8)),
+      dirX: dirX >= 0 ? 1 : -1,
+      speed: 2 + rng() * 2.2,
+      baseZ: RIVER_Z + (rng() * 2 - 1) * (RIVER_HALF - 8),
+      phase: rng() * Math.PI * 2,
+      wobT: rng() * 10, wakeT: 0.5, prevZ: 0
+    };
+    boat.prevZ = boat.pos.z;
+    g.rotation.y = boat.dirX === 1 ? Math.PI / 2 : -Math.PI / 2;
+    boats.push(boat);
+    return boat;
+  }
+
+  function updateBoat(b, dt) {
+    b.wobT += dt;
+    // steady cruise along the river + lazy weave between the banks
+    b.pos.x += b.dirX * b.speed * dt;
+    b.pos.z = b.baseZ + Math.sin(b.wobT * 0.35 + b.phase) * (RIVER_HALF - 8);
+    // wrap around the map edges -> endless traffic in both directions
+    if (b.pos.x > CENTER + 16) b.pos.x = -CENTER - 16;
+    if (b.pos.x < -CENTER - 16) b.pos.x = CENTER + 16;
+
+    const vz = (b.pos.z - b.prevZ) / Math.max(dt, 1e-4);
+    b.prevZ = b.pos.z;
+    const targetH = Math.atan2(b.dirX * b.speed, vz);
+    let dh = targetH - b.group.rotation.y;                 // shortest-path yaw glide
+    while (dh > Math.PI) dh -= Math.PI * 2;
+    while (dh < -Math.PI) dh += Math.PI * 2;
+    b.group.rotation.y += dh * Math.min(1, dt * 2.5);
+    b.group.position.set(b.pos.x, Math.sin(b.wobT * 2.1 + b.phase) * 0.05, b.pos.z);
+    b.group.rotation.z = Math.sin(b.wobT * 1.6 + b.phase) * 0.05;   // gentle roll
+
+    // foam wake behind the stern
+    b.wakeT -= dt;
+    if (b.wakeT <= 0) {
+      b.wakeT = 0.17;
+      spawnSmoke(new THREE.Vector3(
+        b.pos.x - Math.sin(b.group.rotation.y) * 2.6,
+        0.45,
+        b.pos.z - Math.cos(b.group.rotation.y) * 2.6), 0.75);
+    }
+  }
+
   function spawnWorld() {
     if (spawned) return;
     buildRoutes();
-    // civilians
-    for (let i = 0; i < 58; i++) makeNPC('civilian');
-    // police
-    for (let i = 0; i < 14; i++) makeNPC('police');
-    // traffic across all cities
+    // CROWDED streets: 80 civilians walking around
+    for (let i = 0; i < 80; i++) makeNPC('civilian');
+    // and a heavy police PRESENCE on foot (24 beat cops)
+    for (let i = 0; i < 24; i++) makeNPC('police');
+    // busy traffic across all cities
     const CAR_COLORS = [0xc23a2e, 0x2e6fc2, 0x2e8f4a, 0xc2a02e, 0x7a3ac2];
-    for (let i = 0; i < 9; i++) makeCarEntity({ color: CAR_COLORS[(rng() * CAR_COLORS.length) | 0] });
-    for (let i = 0; i < 6; i++) makeCarEntity({ isPolice: true, color: 0xe8e8e8, speed: 9.5 });
-    for (let i = 0; i < 11; i++) makeCarEntity({ color: [0x2e6fc2, 0x2e8f4a, 0xc2a02e, 0x4a4a52, 0x8a5a2e][(rng() * 5) | 0], speed: 6 + rng() * 3 });
+    for (let i = 0; i < 12; i++) makeCarEntity({ color: CAR_COLORS[(rng() * CAR_COLORS.length) | 0] });
+    // police cruisers get a response rank used by the wanted-level escalation
+    let beatIdx = 0;
+    for (let i = 0; i < 8; i++) {
+      const c = makeCarEntity({ isPolice: true, color: 0xe8e8e8, speed: 9.5 });
+      c.beatIdx = beatIdx++;
+    }
+    for (let i = 0; i < 14; i++) makeCarEntity({ color: [0x2e6fc2, 0x2e8f4a, 0xc2a02e, 0x4a4a52, 0x8a5a2e][(rng() * 5) | 0], speed: 6 + rng() * 3 });
+    // river life: cruisers & fishing boats running BOTH directions under the bridges
+    for (let k = 0; k < 11; k++) {
+      const x = -CENTER + 10 + k * ((CENTER * 2 - 20) / 10);
+      makeBoat(k % 2 === 0 ? 1 : -1, x);
+    }
 
     spawned = true;
   }
@@ -1304,6 +1394,57 @@
   /* ---------------- AI: cars ---------------- */
   let lastSirenAt = 0;
   const _rpos = new THREE.Vector3();   // scratch: rendered run-over position
+
+  /* ---- wanted-level escalation tables ---- */
+  const CRUISERS_FOR_STARS = [0, 1, 2, 3, 5, 99];   // index = star level
+  const FOOT_COPS_FOR_STARS = [0, 0, 0, 2, 4, 6];   // walking cops hunting the hero
+  function cruisersForWanted() {
+    return CRUISERS_FOR_STARS[Math.min(5, Math.max(1, Math.round(player.wanted)))];
+  }
+  // response rank is DYNAMIC: dead cruisers don't hold a slot,
+  // survivors are re-ranked every simulation tick
+  let beatRankCache = null;
+  function beatRank(car) {
+    if (!beatRankCache) {
+      beatRankCache = cars.filter(c => c.isPolice && !c.dead)
+        .sort((a, b) => (a.beatIdx === undefined ? 999 : a.beatIdx) -
+                        (b.beatIdx === undefined ? 999 : b.beatIdx));
+    }
+    return beatRankCache.indexOf(car);
+  }
+  // higher stars: precinct radio ORDERS beat cops to join the chase citywide;
+  // if nobody's close, a fresh squad materialises near the hero (level 3+)
+  let escalT = 0;
+  function updateEscalation(dt) {
+    if (player.dead || player.wanted <= 0) { escalT = 0; return; }
+    const quota = FOOT_COPS_FOR_STARS[Math.min(5, Math.max(1, Math.round(player.wanted)))];
+    if (!quota) return;
+    escalT -= dt;
+    if (escalT > 0) return;
+    escalT = 5;
+    let chasing = 0, best = null, bd = Infinity;
+    NPCs.forEach(n => {
+      if (n.dead || n.type !== 'police') return;
+      if (n.state === 'chase') { chasing++; return; }
+      const d = n.pos.distanceToSquared(player.pos);
+      if (d < bd) { bd = d; best = n; }
+    });
+    if (chasing >= quota) return;
+    if (!best || bd > 100 * 100) {
+      // reinforcements roll in: new officer appears nearby
+      const cop = makeNPC('police');
+      for (let t = 0; t < 24; t++) {
+        const p = randomLocalPoint(player.pos, 70);
+        if (!isInsideBuilding(p.x, p.z) && !isInsideWater(p.x, p.z)) { cop.pos.copy(p); break; }
+      }
+      cop.group.position.copy(cop.pos);
+      best = cop;
+    }
+    best.state = 'chase';                // dispatch order received
+    best.path = [];
+    Sfx.warn();
+  }
+
   function updateCar(car, dt) {
     if (car.dead) return;
     if (car.driver) return;   // player-driven
@@ -1326,9 +1467,12 @@
       }
     }
 
-    // ---- police PURSUIT mode: only while the hero is WANTED ----
+    // ---- police PURSUIT mode: WANTED-LEVEL ESCALATION ----
+    // how many cruisers join the hunt depends on the star level:
+    // 1 sao -> 1 xe, 2 -> 2, 3 -> 3, 4 -> 5, 5 -> TẤT CẢ
     const wanted = !player.dead && player.wanted > 0;
-    if (car.isPolice && wanted && car.mode !== 'pursuit') {
+    if (car.isPolice && wanted && car.mode !== 'pursuit' &&
+        (car.beatIdx === undefined || beatRank(car) < cruisersForWanted())) {
       car.mode = 'pursuit';
       car.deployed = false;              // fresh hunt -> fresh officer
     } else if (car.mode === 'pursuit' && (!wanted || !car.isPolice)) {
@@ -1923,6 +2067,7 @@
     const W2 = (x) => (x + GROUND_HALF) * mScale;
     const dot = (x, z, c, r) => { mctx.fillStyle = c; mctx.fillRect(W2(x) - r / 2, W2(z) - r / 2, r, r); };
     cars.forEach(c => { if (!c.dead) dot(c.group.position.x, c.group.position.z, c.isPolice ? '#6af' : '#fc3', 3); });
+    boats.forEach(b => dot(b.pos.x, b.pos.z, '#7ef', 3));
     NPCs.forEach(n => { if (!n.dead) dot(n.pos.x, n.pos.z, n.type === 'police' ? '#35f' : '#5c5', 2); });
     if (player) dot(player.pos.x, player.pos.z, '#fff', 4);
   }
@@ -1952,9 +2097,12 @@
     simAcc += dt;
     let steps = 0;
     while (simAcc >= FIXED_STEP && steps < 4) {
+      beatRankCache = null;                  // re-rank survivors every tick
       if (!player.dead) updatePlayer(FIXED_STEP);
       NPCs.forEach(n => updateNPC(n, FIXED_STEP));
       cars.forEach(c => updateCar(c, FIXED_STEP));
+      boats.forEach(b => updateBoat(b, FIXED_STEP));
+      updateEscalation(FIXED_STEP);
       simAcc -= FIXED_STEP;
       steps++;
     }
@@ -1966,9 +2114,9 @@
       if (!c.dead) {
         _ipos.copy(c.prevPos).lerp(c.pos, alpha);
         const ih = angLerp(c.prevHeading, c.heading, alpha);
-        c.group.position.set(
-          _ipos.x + Math.cos(ih) * c.laneOffset, 0,
-          _ipos.z - Math.sin(ih) * c.laneOffset);
+        const rx = _ipos.x + Math.cos(ih) * c.laneOffset;
+        const rz = _ipos.z - Math.sin(ih) * c.laneOffset;
+        c.group.position.set(rx, groundY(rx, rz), rz);   // ride the bridge ramps visually
         c.group.rotation.y = ih;
         c.group.userData.wheels.forEach(w => w.rotation.x += c.curSpeed * dt * 4);
         if (c.group.userData.lightRed) {
@@ -1983,8 +2131,12 @@
     // hero glides on foot as well
     if (!player.inCar) {
       _ipos.copy(player.prevPos).lerp(player.pos, alpha);
-      player.group.position.copy(_ipos);
+      player.group.position.set(_ipos.x, groundY(_ipos.x, _ipos.z), _ipos.z);
     }
+    // walking characters follow the bridge decks / ramps too
+    NPCs.forEach(n => {
+      if (!n.dead) n.group.position.y = groundY(n.pos.x, n.pos.z);
+    });
 
     updateFX(dt);
     updateCamera(dt);
@@ -2040,9 +2192,25 @@
 
   // debug / testing hook (harmless in production)
   window.__GTA__ = {
-    get player() { return player; }, NPCs, cars, WEAPONS, hittables,
+    get player() { return player; }, NPCs, cars, boats, WEAPONS, hittables,
     get camera() { return camera; }, get scene() { return scene; },
-    N, RIVER_Z, RIVER_HALF, isInsideBuilding, isInsideWater,
-    buildingBoxes, CITY_CORES
+    N, RIVER_Z, RIVER_HALF, isInsideBuilding, isInsideWater, groundY,
+    buildingBoxes, CITY_CORES,
+    // test hooks: rebuild the police cruiser fleet via the production spawner
+    spawnCruiser() {
+      const c = makeCarEntity({ isPolice: true, color: 0xe8e8e8, speed: 9.5 });
+      c.beatIdx = Math.max(-1, ...cars.filter(x => x.isPolice && x !== c)
+        .map(x => x.beatIdx === undefined ? -1 : x.beatIdx)) + 1;
+      return c;
+    },
+    dispatchCopNear(px, pz) {
+      const cop = makeNPC('police');
+      for (let t = 0; t < 24; t++) {
+        const p = randomLocalPoint(new THREE.Vector3(px, 0, pz), 70);
+        if (!isInsideBuilding(p.x, p.z) && !isInsideWater(p.x, p.z)) { cop.pos.copy(p); break; }
+      }
+      cop.group.position.copy(cop.pos);
+      return cop;
+    }
   };
 })();

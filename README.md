@@ -16,17 +16,20 @@ PIXEL CITY — game thế giới mở top-down 3D kiểu GTA Chinatown Wars
 | Thế giới 3D pixel | SIÊU BẢN ĐỒ 11×11 block (~484×484 đơn vị): đường nhựa, vạch kẻ, vỉa hè, mặt tiền cửa sổ pixel, cây cối. Render độ phân giải thấp + upscale pixelated |
 | 🏙️ NHIỀU THÀNH PHỐ kiểu Đông Anh | 4 THÀNH PHỐ/TRUNG TÂM riêng biệt rải khắp map: trung tâm bắc sông, khu đô thị mới đông bắc, phố cổ tây nam, thành phố nam sông. Mỗi thành phố là CỤM CHÙM NHÀ CAO TẦNG như huyện Đông Anh — càng vào lõi càng cao (tối đa ~56m), tháp kính có nhà mái + ăng-ten |
 | 🆕 FIX bị tòa nhà che khuất | Nhà cao tầng chắn giữa camera và nhân vật TỰ MỜ thành kính trong suốt (opacity ~0.15) rồi hiện lại đặc khi hết chắn — áp cho CẢ nhân vật chính LẪN người dân trong bán kính 45m → luôn thấy nhân vật và đường đi |
-| 🆕 Bản đồ qua SÔNG + CẦU | Sông cắt ngang chia 2 miền bắc – nam; MỌI đại lộ đều có cầu bê tông lan can. Minimap vẽ sông xanh + sọc cầu |
+| 🆕 Bản đồ qua SÔNG + CẦU | Sông cắt ngang chia 2 miền bắc – nam; MỌI đại lộ đều có cầu VÒM BÊ TÔNG NÂNG CAO + dốc lên/xuống, xe và người đi qua cầu trượt theo cao độ thực. Minimap vẽ sông xanh + sọc cầu |
+| 🚤 THUYỀN TRÊN SÔNG (mới) | 11 con thuyền (phà + thuyền dân) chạy 2 CHIỀU ngược xuôi dòng suốt map, lượn nhẹ giữa hai bờ, nghiêng rơi theo sóng, ĐÀO SÓNG trắng phía đuôi, chui gọn DƯỚI CẦU đã nâng. Chấm xanh dương trên minimap |
+| 🚔 Đội quân đông | 34 xe trên phố (26 xe dân + 8 XE CẢNH SÁT), 80 người dân + 24 cảnh sát bộ hành tuần tra khắp 4 thành phố — đường luôn nhộn nhịp |
 | 🏎️ TỐI ƯU lái xe MƯỢT như xe thật | Fixed-timestep 60Hz tách khỏi tốc độ khung hình + NỘI SUY render giữa 2 trạng thái vật lý → xe trượt êm từng khung hình kể cả khi FPS tụt hay lag spike (không còn "dịch chuyển tức thời"). Vật lý xe thật: tăng tốc/gảm theo cấp số nhân (easing), GIỚI HẠN góc đánh lái, chủ động chậm lại trước khúc cua, phanh dừng mượt không giật cục |
 | ⚡ Tối ưu render | ~400 vật liệu nhà chỉ bật chế độ trong suốt ĐÚNG LÚC fade chống che, còn lại vẽ opaque hoàn toàn → bỏ chi phí sắp xếp transparency mỗi khung hình |
 | 🚗💥 Bắn xe nổ tung | Tia lửa kín kết + tiếng kim loại + khói động cơ; đủ số phát → NỔ TUNG: cầu lửa cam, mảnh văng, khói bốc, vết cháy đen, xác xe CHÁY ĐEN nằm lại hiện trường |
-| 🚨 Xe cảnh sát TRUY ĐUỔI | Có sao truy nã: MỌI ô tô cảnh sát chuyển chế độ TRUY ĐUỔI — áp sát 13 u/s nhanh hơn xe thường, đèn nháy + CÒI HÚ, né chướng ngại vật. Hết sao → rút lui về tuần tra |
+| 🚨 Xe cảnh sát TRUY ĐUỔI | Có sao truy nã: ô tô cảnh sát chuyển chế độ TRUY ĐUỔI — áp sát 13 u/s nhanh hơn xe thường, đèn nháy + CÒI HÚ, né chướng ngại vật. Hết sao → rút lui về tuần tra |
+| 🆕 Cảnh sát TĂNG CƯỜNG THEO SAO | Phản ứng CỘNG DẦN theo mức truy nã (XẾP HẠNG ĐỘNG theo đội còn sống): ⭐1 → 1 xe đuổi · ⭐2 → 2 xe · ⭐3 → 3 xe + 2 cảnh sát bộ hành được lệnh phối hợp · ⭐4 → 5 xe + 4 bộ hành · ⭐5 → TẤT CẢ xe + 6 bộ hành. Nếu gần đó không có cảnh sát tuần tra, QUÂN TIẾP ỨNG MỚI XUẤT HIỆN gần người chơi. Xe bị phá hủy không chiếm suất phản ứng |
 | 👮 Áp sát + cảnh sát nhảy xuống bắn | Xe áp sát đến ~11m PHANH MƯỢT DỪNG LẠI, một cảnh sát NHẢY XUỐNG (luân phiên 2 bên cửa), đuổi theo + BẮN trong tầm 16m (kiểm tra tầm nhìn). Chạy thoát >16m → xe tiếp tục truy đuổi, triển khai lần nữa |
 | 🆕 Nổ dây chuyền & sát thương vụ nổ | Vụ nổ sát thương mọi NPC trong 6m (giảm theo khoảng cách) và cả người chơi nếu đứng gần; đang lái xe nổ thì bị văng ra kịp thời. Xe khác trong 5.5m bắt lửa sau 0.35–1s → NỔ DÂY CHUYỀN |
 | 🆕 Fix đạn xuyên không | Bản cũ đạn free-aim bị đẩy lên +0.12 bay VƯỢT QUA đầu xe. Giờ đạn bay đúng điểm ngắm → đặt chuột lên xe là TRÚNG. Hitbox gồm thân + cabin + capo + cốp |
 | Trộm xe ô tô có người lái | Mỗi xe AI đều có tài xế trong cabin. Nhấn E gần xe có người → GIẬT XE: tài xế bị đẩy ra bỏ chạy (tài xế cảnh sát quay lại truy đuổi!), sao tăng (+1.2 dân / +2.2 cảnh sát) |
 | Chạm xe không chết + xe tự dừng | Người chơi KHÔNG BAO GIỜ bị xe cán chết. Xe AI phanh mượt và DỪNG khi người chơi đứng trước (~4.5m), hết đường thì chạy tiếp. Xe chỉ cán được NPC |
-| Người chuyển động | ~58 người dân + ~14 cảnh sát tuần tra khắp các thành phố (BFS tìm đường trên lưới đường + cầu, không xuyên nhà, không rơi xuống sông) |
+| Người chuyển động | 80 người dân + 24 cảnh sát bộ hành tuần tra khắp các thành phố (BFS tìm đường trên lưới đường + cầu, không xuyên nhà, không rơi xuống sông) |
 | Vũ khí đầy đủ | Tay đấm ✊ / dao 🔪 / súng lục 🔫 100 viên / AK-47 🔫 500 viên — đạn dự trữ riêng, R nạp đạn |
 | 🎯 Chỉnh tâm khi bắn NPC | Aim-assist ±7° (tối đa 120m, không bám xuyên tường) → gần như luôn trúng, ngắm chính giữa ăn HEADSHOT. Tầm đạn: súng lục 220, AK-47 340 |
 | 🆕 Nhân vật cầm vũ khí thật trên tay | Mỗi vũ khí là mô hình 3D gắn vào BÀN TAY PHẢI, di chuyển theo cánh tay: ✊ nắm đấm da màu, 🔪 dao lưỡi bạc chuôi gỗ, 🔫 súng lục báng nghiêng, 🔫 AK-47 nòng sắt + báng gỗ + băng đạn cong. Fix bug bản cũ: mesh bị gắn sai nằm dưới chân |
@@ -44,6 +47,6 @@ Hỗ trợ cảm ứng (joystick ảo + chạm để tấn công)
 
 ## Kiểm chứng
 - Cú pháp JS hợp lệ (`node --check`)
-- Smoke test headless **56/56 PASS** (`node tests/smoke.test.cjs`): map 11×11 multi-city + 4 cụm thành phố cao tầng (73 tháp ≥25m, cao nhất ~56m) + sông/cầu; spawn an toàn; 72 NPC + 26 xe đủ tài xế; AK-47 500 viên; aim-assist headshot/chest; xe phanh dừng không hại player; giật xe có tài xế; BẮN AK → XE NỔ + NỔ DÂY CHUYỀN; vòng đời TRUY ĐUỔI cảnh sát đầy đủ; BIỂU TƯỢNG vũ khí trên tay + HUD icon; FIX CHE KHUẤT (fade 0.16 ↔ đặc 0.99); và **ĐỘ MƯỢT**: xe AI trượt tối đa ~0.16 đơn vị/khung hình ở 60Hz fixed-timestep — không giật khựng.
+- Smoke test headless **67/67 PASS** (`node tests/smoke.test.cjs`): map 11×11 multi-city + 4 cụm thành phố cao tầng (73 tháp ≥25m, cao nhất ~56m) + sông/cầu nâng; spawn an toàn; 104 NPC + 34 xe đủ tài xế + 11 thuyền; AK-47 500 viên; aim-assist headshot/chest; xe phanh dừng không hại player; giật xe có tài xế; BẮN AK → XE NỔ + NỔ DÂY CHUYỀN (khu cách ly không phá đội xe khác); vòng đời TRUY ĐUỔI cảnh sát đầy đủ; TĂNG CƯỜNG THEO SAO (1→1, 3→3 xe + bộ hành điều phối, 5→tất cả); THUYỀN chạy 2 chiều trong biên sông qua cầu nâng (deck 1.5m); BIỂU TƯỢNG vũ khí trên tay + HUD icon; FIX CHE KHUẤT (fade 0.16 ↔ đặc 0.99); ĐỘ MƯỢT: xe AI trượt tối đa ~0.16 đơn vị/khung hình — không giật khựng.
 
 *Lưu ý: container không có GPU nên không chụp được ảnh render thật — mở link để xem trực tiếp.*
