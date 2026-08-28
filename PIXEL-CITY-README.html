@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>PIXEL CITY - Installation Instructions</title>
+<style>
+  body { font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; line-height: 1.6; }
+  .header { background: #2c3138; color: white; padding: 20px; border-radius: 8px; margin-bottom: 30px; }
+  .section { background: #f5f5f5; padding: 20px; margin: 20px 0; border-radius: 8px; }
+  .btn { background: #007bff; color: white; padding: 12px 24px; border: none; border-radius: 4px; cursor: pointer; font-size: 16px; }
+  .btn:hover { background: #0056b3; }
+  .code { background: #2d2d2d; color: #fff; padding: 15px; border-radius: 4px; font-family: monospace; margin: 10px 0; }
+  .note { background: #fff3cd; border-left: 4px solid #ffc107; padding: 15px; margin: 15px 0; }
+  .success { background: #d4edda; border-left: 4px solid #28a745; padding: 15px; margin: 15px 0; }
+</style>
+</head>
+<body>
+<div class="header">
+  <h1>🎮 PIXEL CITY - Installation Guide</h1>
+  <p><strong>Open World GTA-style 3D Game</strong></p>
+</div>
+
+<div class="section">
+  <h2>📋 Quick Start</h2>
+  <p><strong>Important:</strong> Simply double-clicking <code>index.html</code> <strong>WILL NOT work</strong> on other machines.</p>
+  
+  <div class="note">
+    <strong>⚠️ Security Notice:</strong>
+    Modern browsers block web games from loading when opened directly from files.<br>
+    You must run a local web server to allow the game to load scripts properly.
+  </div>
+
+  <h3>🖥️ <strong>Windows Users</strong></h3>
+  <ol>
+    <li>Extract all files from the ZIP to any folder</li>
+    <li><strong>DOUBLE-CLICK</strong> on <code>launch.bat</code></li>
+    <li>Wait for server to start (it will show a command prompt)</li>
+    <li><strong>OPEN</strong> your browser and go to: <code>http://localhost:8123</code></li>
+    <li>The game will start automatically!</li>
+  </ol>
+
+  <h3>🐧 <strong>Linux Users</strong></h3>
+  <ol>
+    <li>Extract all files from the ZIP to any folder</li>
+    <li>Open terminal in that folder</li>
+    <li><strong>RUN:</strong> <code>chmod +x launch.sh</code></li>
+    <li><strong>EXECUTE:</strong> <code>./launch.sh</code></li>
+    <li>Wait for server to start (it will show output)</li>
+    <li><strong>OPEN</strong> your browser and go to: <code>http://localhost:8123</code></li>
+    <li>The game will start automatically!</li>
+  </ol>
+
+  <h3>📱 <strong>Mobile Users</strong></h3>
+  <p>If you have a smartphone with the same WiFi network:</p>
+  <ul>
+    <li>Launch the server on your computer</li>
+    <li>Find your computer's IP address (e.g., 192.168.1.100)</li>
+    <li>Open browser on phone and go to: <code>http://192.168.1.100:8123</code></li>
+    <li>Game will work on any mobile browser!</li>
+  </ul>
+</div>
+
+<div class="section">
+  <h2>🛠️ <strong>Files Included</strong></h2>
+  <p>Every necessary file is included in this package:</p>
+  
+  <div class="code">
+index.html          # Game interface
+js/game.js          # Complete game logic (2328 lines)
+lib/three.min.js    # Three.js engine (r128)
+launch.bat          # Windows server launcher
+launch.sh           # Linux/macOS server launcher
+PIXEL-CITY-README.html # This instructions page
+LICENSE            # Game license
+  </div>
+
+  <div class="success">
+    <strong>✅ No external dependencies required</strong><br>
+    The game works completely offline once the server starts!
+  </div>
+</div>
+
+<div class="section">
+  <h2>🎮 <strong>Game Features</strong></h2>
+  <ul>
+    <li><strong>3D Open World:</strong> 11×11 blocks, 4 unique cities</li>
+    <li><strong>GTA-style Mechanics:</strong> Wanted system, car theft, police chases</li>
+    <li><strong>Vehicle Physics:</strong> Realistic driving with 60Hz fixed timestep</li>
+    <li><strong>Weapon System:</strong> Hand, knife, pistol (100 bullets), AK-47 (500 bullets)</li>
+    <li><strong>Procedural Content:</strong> All terrain generated automatically</li>
+    <li><strong>Sound Design:</strong> Complete audio with WebAudio API</li>
+    <li><strong>Mobile Optimized:</strong> Touch controls and responsive design</li>
+  </ul>
+</div>
+
+<div class="section">
+  <h2>📖 <strong>Game Controls</strong></h2>
+  <h4>Keyboard:</h4>
+  <p><code>WASD / Arrows</code> — Move<br>
+     <code>Shift</code> — Run<br>
+     <code>Mouse</code> — Aim and shoot<br>
+     <code>1/2/3/4</code> — Switch weapons (hand/knife/pistol/AK-47)<br>
+     <code>E</code> — Enter/steal vehicles<br>
+     <code>R</code> — Reload guns</p>
+
+  <h4>Touch/Mobile:</h4>
+  <p>Virtual joystick for movement + tap to attack/shoot</p>
+</div>
+
+<div class="section">
+  <h2>🔧 <strong>Troubleshooting</strong></h2>
+  
+  <h3>🖥️ <strong>If game doesn't load</strong></h3>
+  <ol>
+    <li><strong>Refresh your browser</strong> completely</li>
+    <li><strong>Check console</strong> (F12) for JavaScript errors</li>
+    <li><strong>Ensure server is running</strong> (look for terminal output)</li>
+    <li><strong>Try different browser</strong> (Chrome, Firefox, Edge)</li>
+    <li><strong>Disable ad blockers</strong> temporarily</li>
+  </ol>
+
+  <h3>📱 <strong>Mobile specific issues</strong></h3>
+  <ul>
+    <li><strong>Touch not working:</strong> Try different browser (Chrome/Firefox)</li>
+    <li><strong>Slow loading:</strong> Wait for server to fully start</li>
+    <li><strong>Orientation:</strong> Use landscape mode for best experience</li>
+  </ul>
+
+  <h3>🆘 <strong>Need help?</strong></h3>
+  <p>If you're still having issues, the game includes <code>debug_bridge.cjs</code> for troubleshooting.</p>
+</div>
+
+<div class="section">
+  <h2>🏆 <strong>System Requirements</strong></h2>
+  <ul>
+    <li><strong>Browser:</strong> Chrome, Firefox, Edge, or Safari (modern versions)</li>
+    <li><strong>Memory:</strong> 2GB+ RAM recommended</li>
+    <li><strong>Graphics:</strong> WebGL support (most browsers have this)</li>
+    <li><strong>Storage:</strong> ~10MB for game files</li>
+    <li><strong>Network:</strong> Not required (works offline)</li>
+  </ul>
+
+  <div class="note">
+    <strong>⚠️ Note:</strong> The game includes a headless mode for systems without GPU acceleration.
+  </div>
+</div>
+
+<div class="section">
+  <h2>📦 <strong>Package Contents</strong></h2>
+  <p><strong>Download:</strong> PIXEL-CITY.zip</p>
+  <p><strong>Extract:</strong> To any folder on your computer</p>
+  <p><strong>Play:</strong> Follow the instructions above</p>
+  <p><strong>Share:</strong> Give the entire folder to others to play</p>
+
+  <p style="margin-top: 20px;">
+    <strong>Ready to play?</strong> Extract and launch the server now!<br>
+    <em>Every necessary file is included - no downloads required!</em>
+  </p>
+</div>
+
+<footer style="text-align: center; margin-top: 40px; padding: 20px; background: #2c3138; color: white; border-radius: 8px;">
+  <p><strong>PIXEL CITY - Open World GTA-style Game</strong></p>
+  <p>Built with Three.js r128 | All content procedural</p>
+  <p>For support: Check browser console for errors, or visit instructions page</p>
+</footer>
+</body>
+</html>
